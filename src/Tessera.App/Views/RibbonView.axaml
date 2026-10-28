@@ -1,0 +1,283 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Tessera.App.ViewModels"
+             xmlns:v="using:Tessera.App.Views"
+             xmlns:s="using:Tessera.App.Services"
+             x:Class="Tessera.App.Views.RibbonView"
+             x:DataType="vm:MainViewModel">
+  <!-- Power BI-style ribbon. Every button runs a real command; groups follow Power BI's naming. -->
+  <DockPanel>
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="8,0,8,0">
+      <StackPanel Orientation="Horizontal">
+        <Button Classes="menuTab" Content="File" Command="{Binding ShowHomeCommand}" ToolTip.Tip="Open, save and start pages" />
+        <Button Classes="menuTab" Classes.current="{Binding IsHomeTab}" Content="Home" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Home" />
+        <Button Classes="menuTab" Classes.current="{Binding IsInsertTab}" Content="Insert" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Insert" />
+        <Button Classes="menuTab" Classes.current="{Binding IsModelingTab}" Content="Modeling" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Modeling" />
+        <Button Classes="menuTab" Classes.current="{Binding IsViewTab}" Content="View" Command="{Binding SelectRibbonTabCommand}" CommandParameter="View" />
+        <Button Classes="menuTab" Classes.current="{Binding IsHelpTab}" Content="Help" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Help" />
+      </StackPanel>
+      <Button Grid.Column="1" Classes="flat" Command="{Binding ToggleRibbonCommand}" VerticalAlignment="Center"
+              ToolTip.Tip="{Binding IsRibbonExpanded, Converter={x:Static v:BoolTextConverter.Instance}, ConverterParameter='Collapse the ribbon|Expand the ribbon'}">
+        <Panel>
+          <Path Classes="icon" Data="{StaticResource Icon.ChevronDown}" Width="12" Height="12" RenderTransform="rotate(180deg)"
+                IsVisible="{Binding IsRibbonExpanded}" />
+          <Path Classes="icon" Data="{StaticResource Icon.ChevronDown}" Width="12" Height="12" IsVisible="{Binding !IsRibbonExpanded}" />
+        </Panel>
+      </Button>
+    </Grid>
+
+    <Border IsVisible="{Binding IsRibbonExpanded}" Height="96" Margin="8,0,8,4">
+      <Panel>
+        <!-- Home -->
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding IsHomeTab}">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Clipboard" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" Command="{Binding Report.PasteCommand}" ToolTip.Tip="Paste a copied visual (Ctrl+V)">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Paste}" /><TextBlock Text="Paste" /></StackPanel>
+              </Button>
+              <StackPanel VerticalAlignment="Center">
+                <Button Classes="ribbonSmall" Command="{Binding Report.CutCommand}" ToolTip.Tip="Cut the selected visual (Ctrl+X)">
+                  <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="{StaticResource Icon.Cut}" /><TextBlock Text="Cut" /></StackPanel>
+                </Button>
+                <Button Classes="ribbonSmall" Command="{Binding Report.CopyCommand}" ToolTip.Tip="Copy the selected visual (Ctrl+C)">
+                  <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="{StaticResource Icon.Copy}" /><TextBlock Text="Copy" /></StackPanel>
+                </Button>
+              </StackPanel>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Data" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" ToolTip.Tip="Load data into this report">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Database}" /><TextBlock Text="Get data ▾" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                    <MenuItem Header="Excel workbook…" Command="{Binding GetDataCommand}" CommandParameter="excel" />
+                    <MenuItem Header="Text / CSV…" Command="{Binding GetDataCommand}" CommandParameter="text" />
+                    <MenuItem Header="Parquet…" Command="{Binding GetDataCommand}" CommandParameter="parquet" />
+                    <MenuItem Header="JSON…" Command="{Binding GetDataCommand}" CommandParameter="json" />
+                    <MenuItem Header="Power BI file…" Command="{Binding GetDataCommand}" CommandParameter="powerbi" />
+                    <Separator />
+                    <MenuItem Header="Sample data" Command="{Binding LoadSampleCommand}" />
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding GetDataCommand}" CommandParameter="excel" ToolTip.Tip="Import an Excel workbook">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Workbook}" /><TextBlock Text="Excel&#10;workbook" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding GetDataCommand}" CommandParameter="text" ToolTip.Tip="Import a CSV or text file">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.TextFile}" /><TextBlock Text="Text/CSV" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding GetDataCommand}" CommandParameter="powerbi" ToolTip.Tip="Add the tables and measures of a Power BI file">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.ReportView}" /><TextBlock Text="Power BI&#10;file" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding LoadSampleCommand}" ToolTip.Tip="Add a sample sales table">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Sample}" /><TextBlock Text="Sample&#10;data" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="Reports you opened recently">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Clock}" /><TextBlock Text="Recent&#10;sources ▾" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{Binding Recent.Items}">
+                    <MenuFlyout.ItemContainerTheme>
+                      <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="s:RecentFile">
+                        <Setter Property="Header" Value="{Binding Name}" />
+                        <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenRecentCommand}" />
+                        <Setter Property="CommandParameter" Value="{Binding}" />
+                      </ControlTheme>
+                    </MenuFlyout.ItemContainerTheme>
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Insert" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" ToolTip.Tip="Add a visual to the page">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.NewVisual}" /><TextBlock Text="New&#10;visual ▾" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{x:Static vm:ReportViewModel.VisualTypes}">
+                    <MenuFlyout.ItemContainerTheme>
+                      <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:VisualTypeOption">
+                        <Setter Property="Header" Value="{Binding Label}" />
+                        <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Report.NewVisualCommand}" />
+                        <Setter Property="CommandParameter" Value="{Binding Type}" />
+                      </ControlTheme>
+                    </MenuFlyout.ItemContainerTheme>
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding Report.InsertTextBoxCommand}" ToolTip.Tip="Add a text box">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.TextBox}" /><TextBlock Text="Text&#10;box" /></StackPanel>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Calculations" />
+            <Button Classes="ribbon" Command="{Binding Report.NewMeasureCommand}" ToolTip.Tip="Write a DAX measure">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Measure}" /><TextBlock Text="New&#10;measure" /></StackPanel>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Report" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" Command="{Binding SaveCommand}" ToolTip.Tip="Save as a JuiceCI report (Ctrl+S)">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Save}" /><TextBlock Text="Save" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding OpenCommand}" ToolTip.Tip="Open a report (Ctrl+O)">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Folder}" /><TextBlock Text="Open" /></StackPanel>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+        </StackPanel>
+
+        <!-- Insert -->
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding IsInsertTab}">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Pages" />
+            <Button Classes="ribbon" Command="{Binding Report.AddPageCommand}" ToolTip.Tip="Add a blank page">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Blank}" /><TextBlock Text="New&#10;page" /></StackPanel>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Visuals" />
+            <ItemsControl ItemsSource="{x:Static vm:ReportViewModel.VisualTypes}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:VisualTypeOption">
+                  <Button Classes="ribbon" ToolTip.Tip="{Binding Label}"
+                          Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Report.NewVisualCommand}"
+                          CommandParameter="{Binding Type}">
+                    <StackPanel>
+                      <Path Classes="icon" Data="{Binding IconKey, Converter={x:Static v:ResourceKeyConverter.Instance}}" />
+                      <TextBlock Text="{Binding Label}" MaxWidth="64" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Elements" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" Command="{Binding Report.InsertTextBoxCommand}" ToolTip.Tip="Add a text box">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.TextBox}" /><TextBlock Text="Text&#10;box" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding Report.InsertShapeCommand}" ToolTip.Tip="Add a rectangle">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Shape}" /><TextBlock Text="Shape" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding InsertImageCommand}" ToolTip.Tip="Add a PNG or JPEG image">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Image}" /><TextBlock Text="Image" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding Report.InsertPageNavigatorCommand}" ToolTip.Tip="Add buttons that switch between pages">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Navigator}" /><TextBlock Text="Page&#10;navigator" /></StackPanel>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+        </StackPanel>
+
+        <!-- Modeling -->
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding IsModelingTab}">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Calculations" />
+            <Button Classes="ribbon" Command="{Binding Report.NewMeasureCommand}" ToolTip.Tip="Write a DAX measure">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Measure}" /><TextBlock Text="New&#10;measure" /></StackPanel>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Relationships" />
+            <Button Classes="ribbon" Command="{Binding Report.ShowModelViewCommand}" ToolTip.Tip="See tables and their relationships">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Model}" /><TextBlock Text="Model&#10;view" /></StackPanel>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Page" />
+            <Button Classes="ribbon" Command="{Binding PageSettingsCommand}" ToolTip.Tip="Rename and resize this page">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Blank}" /><TextBlock Text="Page&#10;settings" /></StackPanel>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Data" />
+            <Button Classes="ribbon" Command="{Binding Report.ShowDataViewCommand}" ToolTip.Tip="Browse the rows of each table">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.DataView}" /><TextBlock Text="Table&#10;view" /></StackPanel>
+            </Button>
+          </DockPanel>
+        </StackPanel>
+
+        <!-- View -->
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding IsViewTab}">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Scale to fit" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" Command="{Binding Report.SetZoomCommand}" CommandParameter="{x:Static vm:PageZoom.FitPage}">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.FitPage}" /><TextBlock Text="Fit to&#10;page" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding Report.SetZoomCommand}" CommandParameter="{x:Static vm:PageZoom.FitWidth}">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.FitWidth}" /><TextBlock Text="Fit to&#10;width" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding Report.ActualSizeCommand}">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.ActualSize}" /><TextBlock Text="Actual&#10;size" /></StackPanel>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Show panes" />
+            <StackPanel VerticalAlignment="Center" Spacing="0" Margin="6,0">
+              <CheckBox Content="Filters" IsChecked="{Binding Report.ShowFiltersPane}" FontSize="12" MinHeight="24" />
+              <CheckBox Content="Visualizations" IsChecked="{Binding Report.ShowVisualizationsPane}" FontSize="12" MinHeight="24" />
+              <CheckBox Content="Data" IsChecked="{Binding Report.ShowDataPane}" FontSize="12" MinHeight="24" />
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Page options" />
+            <StackPanel VerticalAlignment="Center" Margin="6,0">
+              <CheckBox Content="Snap to grid" IsChecked="{Binding SnapToGrid}" FontSize="12" MinHeight="24" />
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Theme" />
+            <StackPanel VerticalAlignment="Center" Margin="6,0">
+              <RadioButton GroupName="ribbonTheme" Content="Light" IsChecked="{Binding IsLightTheme, Mode=OneWay}" FontSize="12" MinHeight="24"
+                           Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.Light}" />
+              <RadioButton GroupName="ribbonTheme" Content="Dark" IsChecked="{Binding IsDarkTheme, Mode=OneWay}" FontSize="12" MinHeight="24"
+                           Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.Dark}" />
+            </StackPanel>
+          </DockPanel>
+        </StackPanel>
+
+        <!-- Help -->
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding IsHelpTab}">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Help" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" Command="{Binding GettingStartedCommand}" ToolTip.Tip="Build a sample report">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Sample}" /><TextBlock Text="Getting&#10;started" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding ShortcutsCommand}">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Help}" /><TextBlock Text="Keyboard&#10;shortcuts" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding AboutCommand}">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Info}" /><TextBlock Text="About" /></StackPanel>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+        </StackPanel>
+      </Panel>
+    </Border>
+  </DockPanel>
+</UserControl>

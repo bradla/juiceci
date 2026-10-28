@@ -1,0 +1,266 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Tessera.App.ViewModels"
+             xmlns:s="using:Tessera.App.Services"
+             xmlns:v="using:Tessera.App.Views"
+             x:Class="Tessera.App.Views.HomeView"
+             x:DataType="vm:MainViewModel">
+  <Grid ColumnDefinitions="180,*">
+    <!-- Left navigation -->
+    <Border Background="{DynamicResource PaneBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,0,0,16">
+          <Border Height="1" Background="{DynamicResource LineBrush}" Margin="16,0,16,8" />
+          <Button Classes="flat" HorizontalAlignment="Stretch" Padding="14,8">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Path Classes="icon" Data="{StaticResource Icon.Settings}" Width="15" Height="15" />
+              <TextBlock Text="Options and settings" FontSize="13" />
+            </StackPanel>
+            <Button.Flyout>
+              <MenuFlyout Placement="RightEdgeAlignedBottom">
+                <MenuItem Header="Options…" Command="{Binding OptionsCommand}" />
+                <MenuItem Header="Theme">
+                  <MenuItem Header="Light" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.Light}">
+                    <MenuItem.Icon><TextBlock Text="✓" IsVisible="{Binding IsLightTheme}" /></MenuItem.Icon>
+                  </MenuItem>
+                  <MenuItem Header="Dark" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.Dark}">
+                    <MenuItem.Icon><TextBlock Text="✓" IsVisible="{Binding IsDarkTheme}" /></MenuItem.Icon>
+                  </MenuItem>
+                  <MenuItem Header="System default" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.System}">
+                    <MenuItem.Icon><TextBlock Text="✓" IsVisible="{Binding IsSystemTheme}" /></MenuItem.Icon>
+                  </MenuItem>
+                </MenuItem>
+                <MenuItem Header="Clear recent reports" Command="{Binding ClearRecentCommand}" IsEnabled="{Binding HasRecent}" />
+                <Separator />
+                <MenuItem Header="About JuiceCI" Command="{Binding AboutCommand}" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+        </StackPanel>
+
+        <StackPanel Margin="0,16,0,0" Spacing="4">
+          <Button Classes="flat" HorizontalAlignment="Stretch" Height="72" Background="{DynamicResource AccentSoftBrush}">
+            <StackPanel HorizontalAlignment="Center" Spacing="6">
+              <Path Classes="icon" Data="{StaticResource Icon.Home}" Stroke="{DynamicResource AccentBrush}" />
+              <TextBlock Text="Home" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="flat" HorizontalAlignment="Stretch" Height="72" Command="{Binding OpenCommand}">
+            <StackPanel HorizontalAlignment="Center" Spacing="6">
+              <Path Classes="icon" Data="{StaticResource Icon.Folder}" />
+              <TextBlock Text="Open" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="flat" HorizontalAlignment="Stretch" Height="72" Command="{Binding ShowReportCommand}">
+            <StackPanel HorizontalAlignment="Center" Spacing="6">
+              <Path Classes="icon" Data="{StaticResource Icon.ReportView}" />
+              <TextBlock Text="Current report" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <ScrollViewer Grid.Column="1">
+      <StackPanel Margin="40,24,40,40" Spacing="12" MaxWidth="1100" HorizontalAlignment="Left">
+        <!-- Data sources -->
+        <ToggleButton x:Name="SourcesToggle" Classes="section" IsChecked="True">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Path Classes="icon chevron" Data="{StaticResource Icon.ChevronDown}" />
+            <TextBlock Text="Select a data source or start with a blank report" FontSize="22" FontWeight="SemiBold" />
+          </StackPanel>
+        </ToggleButton>
+        <StackPanel Spacing="4" IsVisible="{Binding #SourcesToggle.IsChecked}">
+          <WrapPanel Margin="0,4,0,0">
+            <Button Classes="card" Command="{Binding NewReportCommand}">
+              <StackPanel Spacing="10">
+                <Path Classes="icon" Data="{StaticResource Icon.Blank}" />
+                <TextBlock Text="Blank report" FontWeight="SemiBold" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="card" Command="{Binding GetDataCommand}" CommandParameter="excel">
+              <StackPanel Spacing="10">
+                <Path Classes="icon" Data="{StaticResource Icon.Workbook}" />
+                <TextBlock Text="Excel workbook" FontWeight="SemiBold" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="card" Command="{Binding GetDataCommand}" CommandParameter="text">
+              <StackPanel Spacing="10">
+                <Path Classes="icon" Data="{StaticResource Icon.TextFile}" />
+                <TextBlock Text="Text / CSV" FontWeight="SemiBold" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="card" Command="{Binding GetDataCommand}" CommandParameter="parquet">
+              <StackPanel Spacing="10">
+                <Path Classes="icon" Data="{StaticResource Icon.Database}" />
+                <TextBlock Text="Parquet file" FontWeight="SemiBold" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="card" Command="{Binding GetDataCommand}" CommandParameter="powerbi">
+              <StackPanel Spacing="10">
+                <Path Classes="icon" Data="{StaticResource Icon.ReportView}" />
+                <TextBlock Text="Power BI file" FontWeight="SemiBold" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button Classes="card" Command="{Binding LoadSampleCommand}">
+              <StackPanel Spacing="10">
+                <Path Classes="icon" Data="{StaticResource Icon.Sample}" />
+                <TextBlock Text="Learn with sample data" FontWeight="SemiBold" HorizontalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap" />
+              </StackPanel>
+            </Button>
+            <Button Classes="card" Command="{Binding GetDataCommand}" CommandParameter="any">
+              <StackPanel Spacing="10">
+                <Path Classes="icon" Data="{StaticResource Icon.AddCircle}" />
+                <TextBlock Text="Get data from other files" FontWeight="SemiBold" HorizontalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap" />
+              </StackPanel>
+            </Button>
+          </WrapPanel>
+          <TextBlock Classes="muted" FontSize="12" Text="Tip: you can also drop data files or .tsr reports onto this window." />
+        </StackPanel>
+
+        <!-- Recommended -->
+        <ToggleButton x:Name="RecommendedToggle" Classes="section" IsChecked="True" Margin="0,16,0,0">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Path Classes="icon chevron" Data="{StaticResource Icon.ChevronDown}" />
+            <TextBlock Text="Recommended" FontSize="20" FontWeight="SemiBold" />
+          </StackPanel>
+        </ToggleButton>
+        <WrapPanel IsVisible="{Binding #RecommendedToggle.IsChecked}" Margin="0,4,0,0">
+          <Button Classes="recommend" Command="{Binding GettingStartedCommand}">
+            <StackPanel>
+              <TextBlock Text="Getting started" Margin="14,12,14,10" />
+              <Border Background="{DynamicResource ChromeBrush}" Height="150" Margin="12,0" CornerRadius="4">
+                <Grid>
+                  <Ellipse Width="118" Height="118" Stroke="{DynamicResource LineBrush}" StrokeThickness="1.5"
+                           StrokeDashArray="4,3" />
+                  <v:LogoMark Width="36" Height="36" />
+                  <Border Classes="tile" Margin="0,4,0,0" VerticalAlignment="Top">
+                    <Path Classes="icon" Data="{StaticResource Visual.ColumnChart}" />
+                  </Border>
+                  <Border Classes="tile" Margin="0,0,152,0" VerticalAlignment="Center">
+                    <Path Classes="icon" Data="{StaticResource Visual.LineChart}" />
+                  </Border>
+                  <Border Classes="tile" Margin="152,0,0,0" VerticalAlignment="Center">
+                    <Path Classes="icon" Data="{StaticResource Visual.PieChart}" />
+                  </Border>
+                  <Border Classes="tile" Margin="0,0,0,4" VerticalAlignment="Bottom">
+                    <Path Classes="icon" Data="{StaticResource Visual.Table}" />
+                  </Border>
+                </Grid>
+              </Border>
+              <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,12,0,0" />
+              <TextBlock Text="Build a sample sales report" FontWeight="SemiBold" Margin="14,10,14,12" />
+            </StackPanel>
+          </Button>
+          <Button Classes="recommend" IsVisible="{Binding LastReport, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  Command="{Binding OpenRecentCommand}" CommandParameter="{Binding LastReport}">
+            <StackPanel>
+              <TextBlock Text="Pick up where you left off" Margin="14,12,14,10" />
+              <Border Background="{DynamicResource ChromeBrush}" Height="150" Margin="12,0" CornerRadius="4">
+                <Path Classes="icon" Data="{StaticResource Icon.ReportView}" Width="56" Height="56"
+                      Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.2" />
+              </Border>
+              <Border Height="1" Background="{DynamicResource LineBrush}" Margin="0,12,0,0" />
+              <TextBlock Text="{Binding LastReport.Name, FallbackValue=''}" FontWeight="SemiBold" Margin="14,10,14,12"
+                         TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </Button>
+        </WrapPanel>
+
+        <!-- Recent -->
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,20,0,4">
+          <Border Classes="pill" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Path Classes="icon" Data="{StaticResource Icon.Clock}" />
+              <TextBlock Text="Recent" />
+            </StackPanel>
+          </Border>
+          <TextBox Grid.Column="2" Width="200" PlaceholderText="Filter by keyword" Text="{Binding RecentQuery}"
+                   VerticalAlignment="Center" Margin="0,0,10,0">
+            <TextBox.InnerLeftContent>
+              <Path Classes="icon" Data="{StaticResource Icon.Search}" Width="13" Height="13" Margin="8,0,0,0" />
+            </TextBox.InnerLeftContent>
+          </TextBox>
+          <Button Grid.Column="3" VerticalAlignment="Center" Padding="12,6" ToolTip.Tip="Filter recent reports">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="icon" Data="{StaticResource Icon.Filter}" Width="14" Height="14" />
+              <TextBlock Text="{Binding RecentFilterLabel}" FontWeight="SemiBold" />
+              <Path Classes="icon" Data="{StaticResource Icon.ChevronDown}" Width="10" Height="10" />
+            </StackPanel>
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight">
+                <ScrollViewer MaxHeight="300" Width="260">
+                  <StackPanel Spacing="2" Margin="0,0,8,0">
+                    <TextBlock Text="Date modified" Classes="muted" FontSize="12" Margin="2,0,0,2" />
+                    <ItemsControl ItemsSource="{Binding RecentAgeFilters}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RecentFilterOption">
+                          <CheckBox IsChecked="{Binding IsChecked}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <Path Classes="icon" Data="{StaticResource Icon.Clock}" Width="14" Height="14" />
+                              <TextBlock Text="{Binding Label}" />
+                            </StackPanel>
+                          </CheckBox>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="Location" Classes="muted" FontSize="12" Margin="2,8,0,2"
+                               IsVisible="{Binding RecentFolderFilters.Count}" />
+                    <ItemsControl ItemsSource="{Binding RecentFolderFilters}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RecentFilterOption">
+                          <CheckBox IsChecked="{Binding IsChecked}" ToolTip.Tip="{Binding Label}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <Path Classes="icon" Data="{StaticResource Icon.Folder}" Width="14" Height="14" />
+                              <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" MaxWidth="180" />
+                            </StackPanel>
+                          </CheckBox>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Classes="flat" Content="Clear filters" Margin="0,6,0,0" HorizontalAlignment="Left"
+                            Foreground="{DynamicResource AccentBrush}" Command="{Binding ClearRecentFiltersCommand}"
+                            IsVisible="{Binding ActiveRecentFilterCount}" />
+                  </StackPanel>
+                </ScrollViewer>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+        </Grid>
+
+        <!-- Empty states -->
+        <StackPanel HorizontalAlignment="Center" Spacing="14" Margin="0,16,0,0" IsVisible="{Binding !HasRecent}">
+          <Panel Width="180" Height="180">
+            <Ellipse Fill="{DynamicResource CanvasBackBrush}" />
+            <Path Data="M48,70 H82 L92,82 H132 V128 H48 Z" Fill="{DynamicResource SurfaceBrush}"
+                  Stroke="{DynamicResource LineBrush}" StrokeThickness="1.5" StrokeJoin="Round" />
+            <Path Data="M78,105 A4,4 0 1 1 77.99,105 Z M92,105 A4,4 0 1 1 91.99,105 Z M106,105 A4,4 0 1 1 105.99,105 Z"
+                  Fill="{DynamicResource MutedTextBrush}" />
+            <Path Data="M64,36 L67,46 L77,49 L67,52 L64,62 L61,52 L51,49 L61,46 Z M80,26 L81.5,31 L86.5,32.5 L81.5,34 L80,39 L78.5,34 L73.5,32.5 L78.5,31 Z"
+                  Fill="{DynamicResource SurfaceBrush}" />
+          </Panel>
+          <TextBlock Text="You haven't created or opened any reports yet." HorizontalAlignment="Center" />
+        </StackPanel>
+        <TextBlock Classes="muted" Text="No recent reports match your filters." IsVisible="{Binding NoRecentMatches}" />
+        <ItemsControl ItemsSource="{Binding FilteredRecent}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="s:RecentFile">
+              <Button Classes="flat" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                      Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenRecentCommand}"
+                      CommandParameter="{Binding}">
+                <Grid ColumnDefinitions="28,240,*,Auto">
+                  <Path Classes="icon" Data="{StaticResource Icon.ReportView}" Width="16" Height="16" HorizontalAlignment="Left" />
+                  <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2" Text="{Binding Folder}" Classes="muted" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="3" Text="{Binding Modified}" Classes="muted" VerticalAlignment="Center" Margin="16,0,0,0" />
+                </Grid>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

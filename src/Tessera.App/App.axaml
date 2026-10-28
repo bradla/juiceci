@@ -1,0 +1,54 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Tessera.App.App"
+             RequestedThemeVariant="Light">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://Tessera.App/Assets/Icons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+      <!-- App chrome colors per theme; use them via DynamicResource so theme switches apply live.
+           The report page itself always renders light, like a printed page. -->
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="AccentBrush" Color="#0E7C66" />
+          <SolidColorBrush x:Key="AccentSoftBrush" Color="#E3F2EE" />
+          <SolidColorBrush x:Key="ChromeBrush" Color="#F3F3F1" />
+          <SolidColorBrush x:Key="PaneBrush" Color="#FAFAF9" />
+          <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="CanvasBackBrush" Color="#E9E9E6" />
+          <SolidColorBrush x:Key="LineBrush" Color="#DEDEDA" />
+          <SolidColorBrush x:Key="MutedTextBrush" Color="#6B6B66" />
+          <SolidColorBrush x:Key="IconBrush" Color="#3A3A36" />
+          <SolidColorBrush x:Key="HoverBrush" Color="#EFEFEC" />
+          <SolidColorBrush x:Key="PillBrush" Color="#2B2B28" />
+          <SolidColorBrush x:Key="PillTextBrush" Color="#FFFFFF" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="AccentBrush" Color="#3CC2A0" />
+          <SolidColorBrush x:Key="AccentSoftBrush" Color="#18362F" />
+          <SolidColorBrush x:Key="ChromeBrush" Color="#1E1E1C" />
+          <SolidColorBrush x:Key="PaneBrush" Color="#252523" />
+          <SolidColorBrush x:Key="SurfaceBrush" Color="#2C2C2A" />
+          <SolidColorBrush x:Key="CanvasBackBrush" Color="#161615" />
+          <SolidColorBrush x:Key="LineBrush" Color="#3D3D3A" />
+          <SolidColorBrush x:Key="MutedTextBrush" Color="#A3A39C" />
+          <SolidColorBrush x:Key="IconBrush" Color="#DCDCD6" />
+          <SolidColorBrush x:Key="HoverBrush" Color="#353533" />
+          <SolidColorBrush x:Key="PillBrush" Color="#EDEDE8" />
+          <SolidColorBrush x:Key="PillTextBrush" Color="#1E1E1C" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Light" Accent="#0E7C66" />
+        <ColorPaletteResources x:Key="Dark" Accent="#2FA585" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+    <StyleInclude Source="avares://Tessera.App/Assets/Styles.axaml" />
+  </Application.Styles>
+</Application>

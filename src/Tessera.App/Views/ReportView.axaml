@@ -1,0 +1,528 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Tessera.App.ViewModels"
+             xmlns:v="using:Tessera.App.Views"
+             x:Class="Tessera.App.Views.ReportView"
+             x:DataType="vm:ReportViewModel"
+             Focusable="True">
+  <UserControl.DataTemplates>
+    <!-- Data pane tree nodes: display folders and hierarchies contain fields (and further folders). -->
+    <DataTemplate DataType="vm:FolderNodeViewModel">
+      <StackPanel IsVisible="{Binding IsVisible}">
+        <ToggleButton Classes="treeRow" IsChecked="{Binding IsExpanded}" Padding="4,3">
+          <Grid ColumnDefinitions="14,22,*">
+            <Path Classes="icon chevron" Data="{StaticResource Icon.ChevronRight}" Width="9" Height="9" />
+            <Path Grid.Column="1" Classes="icon" Width="14" Height="14"
+                  Data="{Binding IsHierarchy, Converter={x:Static v:BoolResourceConverter.Instance}, ConverterParameter='Icon.Hierarchy|Icon.Folder'}" />
+            <TextBlock Grid.Column="2" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </Grid>
+        </ToggleButton>
+        <ItemsControl ItemsSource="{Binding Children}" IsVisible="{Binding IsExpanded}" Margin="14,0,0,2" />
+      </StackPanel>
+    </DataTemplate>
+    <DataTemplate DataType="vm:FieldNodeViewModel">
+      <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding IsVisible}">
+        <CheckBox Classes="fieldCheck" IsChecked="{Binding IsChecked}" />
+        <Border Grid.Column="1" Classes="fieldRow" ToolTip.Tip="Drag onto the page, a field well or the Filters pane">
+          <Border.ContextMenu>
+            <ContextMenu>
+              <MenuItem Header="Add to filters on this page" IsVisible="{Binding !IsMeasure}"
+                        Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).AddPageFilterCommand}"
+                        CommandParameter="{Binding}" />
+              <MenuItem Header="Edit measure" IsVisible="{Binding IsMeasure}"
+                        Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).EditMeasureCommand}"
+                        CommandParameter="{Binding}" />
+              <MenuItem Header="Delete measure" IsVisible="{Binding IsMeasure}"
+                        Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).DeleteMeasureCommand}"
+                        CommandParameter="{Binding}" />
+            </ContextMenu>
+          </Border.ContextMenu>
+          <Grid ColumnDefinitions="18,*">
+            <TextBlock Text="{Binding Glyph}" Classes="muted" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          </Grid>
+        </Border>
+      </Grid>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <UserControl.Resources>
+    <!-- Colour swatches for the Format pane; each sends its colour to the given command. -->
+    <ItemsPanelTemplate x:Key="SwatchPanel"><WrapPanel /></ItemsPanelTemplate>
+
+    <!-- A card in the Filters pane: field, what it keeps, and a checklist of values. -->
+    <DataTemplate x:Key="FilterCardTemplate" x:DataType="vm:FilterCardViewModel">
+      <Border Classes="filterCard" Classes.active="{Binding !SelectAll}">
+        <StackPanel>
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <StackPanel>
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding Summary}" Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="flat" Padding="4" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove filter">
+              <Path Classes="icon" Data="{StaticResource Icon.Close}" Width="9" Height="9" />
+            </Button>
+            <ToggleButton Grid.Column="2" Classes="flatToggle" IsChecked="{Binding IsExpanded}" ToolTip.Tip="Expand or collapse">
+              <Path Classes="icon chevron" Data="{StaticResource Icon.ChevronDown}" Width="10" Height="10" />
+            </ToggleButton>
+          </Grid>
+          <StackPanel IsVisible="{Binding IsExpanded}" Margin="0,6,0,0" Spacing="2">
+            <TextBlock Text="Basic filtering" Classes="muted" FontSize="11" />
+            <CheckBox IsChecked="{Binding SelectAll}" Content="Select all" FontSize="12" />
+            <ScrollViewer MaxHeight="220">
+              <ItemsControl ItemsSource="{Binding Values}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:FilterValueViewModel">
+                    <CheckBox IsChecked="{Binding IsChecked}" Content="{Binding Label}" FontSize="12" MinHeight="24" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <Grid ColumnDefinitions="48,*,Auto,Auto,Auto">
+    <!-- View rail -->
+    <Border Background="{DynamicResource PaneBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
+      <StackPanel>
+        <Button Classes="rail" Classes.current="{Binding IsReportView}" Command="{Binding ShowReportViewCommand}" ToolTip.Tip="Report view">
+          <Path Classes="icon" Data="{StaticResource Icon.ReportView}" />
+        </Button>
+        <Button Classes="rail" Classes.current="{Binding IsDataView}" Command="{Binding ShowDataViewCommand}" ToolTip.Tip="Table view">
+          <Path Classes="icon" Data="{StaticResource Icon.DataView}" />
+        </Button>
+        <Button Classes="rail" Classes.current="{Binding IsModelView}" Command="{Binding ShowModelViewCommand}" ToolTip.Tip="Model view">
+          <Path Classes="icon" Data="{StaticResource Icon.Model}" />
+        </Button>
+      </StackPanel>
+    </Border>
+
+    <!-- Report canvas with the page tabs below -->
+    <DockPanel Grid.Column="1" Background="{DynamicResource CanvasBackBrush}" IsVisible="{Binding IsReportView}">
+      <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Background="{DynamicResource PaneBrush}">
+        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+          <StackPanel Orientation="Horizontal">
+            <Button Classes="flat" Command="{Binding PreviousPageCommand}" ToolTip.Tip="Previous page" Margin="6,0,0,0">
+              <Path Classes="icon" Data="{StaticResource Icon.ChevronRight}" Width="9" Height="9" RenderTransform="rotate(180deg)" />
+            </Button>
+            <Button Classes="flat" Command="{Binding NextPageCommand}" ToolTip.Tip="Next page" Margin="0,0,6,0">
+              <Path Classes="icon" Data="{StaticResource Icon.ChevronRight}" Width="9" Height="9" />
+            </Button>
+            <ItemsControl ItemsSource="{Binding Pages}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PageTabViewModel">
+                  <Button Classes="pageTab" Classes.current="{Binding IsCurrent}" Content="{Binding Name}"
+                          Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).SelectPageCommand}"
+                          CommandParameter="{Binding}" ToolTip.Tip="Right-click for page options">
+                    <Button.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Delete page"
+                                  IsEnabled="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).CanDeletePage}"
+                                  Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).DeletePageCommand}"
+                                  CommandParameter="{Binding}" />
+                      </ContextMenu>
+                    </Button.ContextMenu>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Classes="newPage" Command="{Binding AddPageCommand}" ToolTip.Tip="New page">
+              <Path Classes="icon" Data="{StaticResource Icon.Plus}" Width="14" Height="14" />
+            </Button>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+      <ScrollViewer x:Name="CanvasScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+        <LayoutTransformControl x:Name="PageZoomer" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20">
+          <ThemeVariantScope RequestedThemeVariant="Light">
+            <Border Background="{Binding PageBackground, Converter={x:Static v:HexBrushConverter.Instance}}"
+                    Width="{Binding PageWidth}" Height="{Binding PageHeight}" BoxShadow="0 1 6 0 #22000000">
+              <Panel>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" IsHitTestVisible="False"
+                            IsVisible="{Binding !Visuals.Count}">
+                  <TextBlock Text="Build visuals with your data" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                  <TextBlock Classes="muted" HorizontalAlignment="Center" TextAlignment="Center" FontSize="15"
+                             Text="Select or drag fields from the Data pane onto the page,&#10;or pick a visual type from the Visualizations pane." />
+                </StackPanel>
+                <Canvas x:Name="PageCanvas" Background="Transparent" ClipToBounds="True" DragDrop.AllowDrop="True" />
+              </Panel>
+            </Border>
+          </ThemeVariantScope>
+        </LayoutTransformControl>
+      </ScrollViewer>
+    </DockPanel>
+
+    <!-- Table (data) view -->
+    <DockPanel Grid.Column="1" IsVisible="{Binding IsDataView}" Background="{DynamicResource SurfaceBrush}">
+      <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Background="{DynamicResource PaneBrush}">
+        <ItemsControl x:Name="TableTabs" ItemsSource="{Binding Tables}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:TableNodeViewModel">
+              <Button Classes="tab" Classes.current="{Binding IsPreviewed}" Content="{Binding Name}"
+                      Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).SelectPreviewTableCommand}"
+                      CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
+      <TextBlock DockPanel.Dock="Top" Margin="12,8" Classes="muted"
+                 Text="{Binding PreviewTable.RowCountText, FallbackValue='Load data to see it here.'}" />
+      <DataGrid x:Name="PreviewGrid" IsReadOnly="True" CanUserSortColumns="False" GridLinesVisibility="All"
+                HeadersVisibility="Column" />
+    </DockPanel>
+
+    <!-- Model view -->
+    <v:ModelView Grid.Column="1" IsVisible="{Binding IsModelView}" />
+
+    <!-- Filters pane: a strip until expanded -->
+    <Border Grid.Column="2" IsVisible="{Binding IsReportView}" Background="{DynamicResource PaneBrush}"
+            BorderBrush="{DynamicResource LineBrush}" BorderThickness="1,0,0,0">
+      <Panel IsVisible="{Binding ShowFiltersPane}">
+        <Button Classes="strip" Command="{Binding ToggleFiltersCommand}" IsVisible="{Binding !IsFiltersExpanded}" ToolTip.Tip="Expand the Filters pane">
+          <DockPanel>
+            <Path DockPanel.Dock="Top" Classes="icon" Data="{StaticResource Icon.Filter}" Width="14" Height="14" Margin="0,10,0,10" />
+            <LayoutTransformControl>
+              <LayoutTransformControl.LayoutTransform><RotateTransform Angle="90" /></LayoutTransformControl.LayoutTransform>
+              <TextBlock Text="Filters" FontWeight="SemiBold" FontSize="15" />
+            </LayoutTransformControl>
+          </DockPanel>
+        </Button>
+        <DockPanel Width="244" IsVisible="{Binding IsFiltersExpanded}">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto">
+            <TextBlock Classes="paneTitle" Text="Filters" />
+            <Button Grid.Column="1" Classes="flat" Command="{Binding ToggleFiltersCommand}" ToolTip.Tip="Collapse" Margin="0,0,6,0">
+              <TextBlock Text="»" FontSize="16" />
+            </Button>
+          </Grid>
+          <ScrollViewer>
+            <StackPanel Margin="10,0,10,12" Spacing="6">
+              <StackPanel Spacing="6" IsVisible="{Binding Selected.ShowsData, FallbackValue=False}">
+                <TextBlock Text="Filters on this visual" FontWeight="SemiBold" FontSize="12" />
+                <ItemsControl ItemsSource="{Binding VisualFilters}" ItemTemplate="{StaticResource FilterCardTemplate}" />
+                <Border Classes="well" Tag="{x:Static vm:FilterScope.Visual}">
+                  <TextBlock Classes="muted" Text="Add data fields here" Margin="6,4" FontSize="12" />
+                </Border>
+              </StackPanel>
+              <TextBlock Text="Filters on this page" FontWeight="SemiBold" FontSize="12" Margin="0,8,0,0" />
+              <ItemsControl ItemsSource="{Binding PageFilters}" ItemTemplate="{StaticResource FilterCardTemplate}" />
+              <Border Classes="well" Tag="{x:Static vm:FilterScope.Page}">
+                <TextBlock Classes="muted" Text="Add data fields here" Margin="6,4" FontSize="12" />
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Panel>
+    </Border>
+
+    <!-- Visualizations pane -->
+    <Border Grid.Column="3" IsVisible="{Binding IsReportView}"
+            Background="{DynamicResource PaneBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1,0,0,0">
+      <Panel>
+        <Button Classes="strip" Command="{Binding OpenVisualizationsPaneCommand}" IsVisible="{Binding !ShowVisualizationsPane}"
+                ToolTip.Tip="Expand the Visualizations pane">
+          <LayoutTransformControl Margin="0,12,0,0">
+            <LayoutTransformControl.LayoutTransform><RotateTransform Angle="90" /></LayoutTransformControl.LayoutTransform>
+            <TextBlock Text="Visualizations" FontWeight="SemiBold" FontSize="15" />
+          </LayoutTransformControl>
+        </Button>
+        <DockPanel Width="272" IsVisible="{Binding ShowVisualizationsPane}">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto">
+            <TextBlock Classes="paneTitle" Text="Visualizations" />
+            <Button Grid.Column="1" Classes="flat" Command="{Binding CloseVisualizationsPaneCommand}" ToolTip.Tip="Collapse" Margin="0,0,6,0">
+              <TextBlock Text="»" FontSize="16" />
+            </Button>
+          </Grid>
+          <TextBlock DockPanel.Dock="Top" Margin="12,0,0,4" FontSize="12" FontWeight="SemiBold"
+                     Text="{Binding IsFormatTab, Converter={x:Static v:BoolTextConverter.Instance}, ConverterParameter='Format visual|Build visual'}" />
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="12,0,0,6" Spacing="4">
+            <Button Classes="paneTab" Classes.current="{Binding !IsFormatTab}" Command="{Binding ShowBuildTabCommand}" ToolTip.Tip="Build visual">
+              <Path Classes="icon" Data="{StaticResource Icon.Build}" Width="18" Height="18" />
+            </Button>
+            <Button Classes="paneTab" Classes.current="{Binding IsFormatTab}" Command="{Binding ShowFormatTabCommand}" ToolTip.Tip="Format visual">
+              <Path Classes="icon" Data="{StaticResource Icon.Brush}" Width="18" Height="18" />
+            </Button>
+          </StackPanel>
+          <ItemsControl DockPanel.Dock="Top" Margin="12,0,8,8" ItemsSource="{x:Static vm:ReportViewModel.VisualTypes}"
+                        IsVisible="{Binding !IsFormatTab}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:VisualTypeOption">
+                <Button Classes="vtype" ToolTip.Tip="{Binding Label}"
+                        Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).PickVisualTypeCommand}"
+                        CommandParameter="{Binding Type}">
+                  <Path Classes="icon" Data="{Binding IconKey, Converter={x:Static v:ResourceKeyConverter.Instance}}" />
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <WrapPanel DockPanel.Dock="Top" Margin="12,0,8,8" IsVisible="{Binding !IsFormatTab}">
+            <Button Classes="vtype" ToolTip.Tip="Text box" Command="{Binding InsertTextBoxCommand}">
+              <Path Classes="icon" Data="{StaticResource Icon.TextBox}" />
+            </Button>
+            <Button Classes="vtype" ToolTip.Tip="Shape" Command="{Binding InsertShapeCommand}">
+              <Path Classes="icon" Data="{StaticResource Icon.Shape}" />
+            </Button>
+            <Button Classes="vtype" ToolTip.Tip="Page navigator" Command="{Binding InsertPageNavigatorCommand}">
+              <Path Classes="icon" Data="{StaticResource Icon.Navigator}" />
+            </Button>
+          </WrapPanel>
+          <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource LineBrush}" />
+
+          <Panel>
+            <TextBlock Classes="muted" Margin="14" TextWrapping="Wrap"
+                       Text="Select a visual on the page to edit its fields, or click a visual type above to add one.">
+              <TextBlock.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                  <Binding Path="!IsFormatTab" />
+                  <Binding Path="!HasSelection" />
+                </MultiBinding>
+              </TextBlock.IsVisible>
+            </TextBlock>
+            <!-- Format with nothing selected: the page -->
+            <StackPanel Margin="12,10" Spacing="6">
+              <StackPanel.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                  <Binding Path="IsFormatTab" />
+                  <Binding Path="!HasSelection" />
+                </MultiBinding>
+              </StackPanel.IsVisible>
+              <TextBlock Text="Page background" FontWeight="SemiBold" />
+              <ItemsControl ItemsSource="{x:Static vm:VisualViewModel.Swatches}" ItemsPanel="{StaticResource SwatchPanel}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button Classes="swatch" Background="{Binding Converter={x:Static v:HexBrushConverter.Instance}}"
+                            Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).SetPageBackgroundCommand}"
+                            CommandParameter="{Binding}" ToolTip.Tip="{Binding FallbackValue='White', TargetNullValue='White'}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <!-- Build: fields -->
+            <ScrollViewer IsVisible="{Binding HasSelection}">
+              <StackPanel Margin="12,10" Spacing="6" IsVisible="{Binding !IsFormatTab}">
+                <TextBlock Classes="muted" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"
+                           IsVisible="{Binding !Selected.ShowsData, FallbackValue=False}"
+                           Text="This element has no data fields. Drag it to move it, use the corner grip to resize it, and use the Format tab to change its look." />
+
+                <StackPanel Spacing="6" IsVisible="{Binding Selected.HasCategoryWell, FallbackValue=False}">
+                  <TextBlock Text="{Binding Selected.CategoryWellLabel}" FontWeight="SemiBold" />
+                  <Border Classes="well" Tag="{x:Static vm:Well.Category}">
+                    <Panel>
+                      <TextBlock Classes="muted" Text="Add data fields here" Margin="6,4" FontSize="12"
+                                 IsVisible="{Binding !Selected.CategoryFields.Count}" />
+                      <ItemsControl ItemsSource="{Binding Selected.CategoryFields}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:WellFieldViewModel">
+                            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Margin="2">
+                              <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Margin="4,0" TextTrimming="CharacterEllipsis" />
+                              <Button Grid.Column="1" Classes="flat" Padding="4" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove field">
+                                <Path Classes="icon" Data="{StaticResource Icon.Close}" Width="10" Height="10" />
+                              </Button>
+                              <ComboBox Grid.Row="1" Grid.ColumnSpan="2" HorizontalAlignment="Stretch" FontSize="12" Margin="2,2,0,4"
+                                        IsVisible="{Binding HasGrain}" ItemsSource="{Binding GrainOptions}"
+                                        SelectedItem="{Binding SelectedGrain}" ToolTip.Tip="Group dates by">
+                                <ComboBox.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:GrainOption">
+                                    <TextBlock Text="{Binding Label}" />
+                                  </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                              </ComboBox>
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </Panel>
+                  </Border>
+                </StackPanel>
+
+                <TextBlock Text="{Binding Selected.ValuesWellLabel}" FontWeight="SemiBold" Margin="0,8,0,0"
+                           IsVisible="{Binding Selected.ShowsData, FallbackValue=False}" />
+                <Border Classes="well" Tag="{x:Static vm:Well.Values}" IsVisible="{Binding Selected.ShowsData, FallbackValue=False}">
+                  <Panel>
+                    <TextBlock Classes="muted" Text="Add data fields here" Margin="6,4" FontSize="12"
+                               IsVisible="{Binding !Selected.ValueFields.Count}" />
+                    <ItemsControl ItemsSource="{Binding Selected.ValueFields}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:WellFieldViewModel">
+                          <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Margin="2,2,2,6">
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Margin="4,0" TextTrimming="CharacterEllipsis" />
+                            <Button Grid.Column="1" Classes="flat" Padding="4" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove field">
+                              <Path Classes="icon" Data="{StaticResource Icon.Close}" Width="10" Height="10" />
+                            </Button>
+                            <ComboBox Grid.Row="1" Grid.ColumnSpan="2" HorizontalAlignment="Stretch" FontSize="12" Margin="2,2,0,0"
+                                      IsVisible="{Binding CanSummarize}" ItemsSource="{Binding Options}"
+                                      SelectedItem="{Binding SelectedOption}">
+                              <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AggregationOption">
+                                  <TextBlock Text="{Binding Label}" />
+                                </DataTemplate>
+                              </ComboBox.ItemTemplate>
+                            </ComboBox>
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Panel>
+                </Border>
+
+                <Button Margin="0,16,0,0" Command="{Binding DeleteSelectedCommand}" HorizontalAlignment="Left">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon" Data="{StaticResource Icon.Trash}" Width="14" Height="14" />
+                    <TextBlock Text="Delete visual" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- Format: title, colours, text -->
+            <ScrollViewer IsVisible="{Binding HasSelection}">
+              <StackPanel Margin="12,10" Spacing="6" IsVisible="{Binding IsFormatTab}">
+                <StackPanel Spacing="6" IsVisible="{Binding !Selected.IsText, FallbackValue=False}">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Title" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <ToggleSwitch Grid.Column="1" IsChecked="{Binding Selected.ShowTitle}" OnContent="On" OffContent="Off" />
+                  </Grid>
+                  <TextBox Text="{Binding Selected.CustomTitle}" PlaceholderText="{Binding Selected.Title}" />
+                </StackPanel>
+
+                <StackPanel Spacing="6" IsVisible="{Binding Selected.IsText, FallbackValue=False}">
+                  <TextBlock Text="Text" FontWeight="SemiBold" />
+                  <TextBox Text="{Binding Selected.Text}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" />
+                  <Grid ColumnDefinitions="*,Auto,Auto">
+                    <TextBlock Text="Font size" VerticalAlignment="Center" />
+                    <NumericUpDown Grid.Column="1" Width="110" Minimum="6" Maximum="96" Increment="1" FormatString="0"
+                                   Value="{Binding Selected.FontSize}" />
+                    <ToggleButton Grid.Column="2" Margin="6,0,0,0" IsChecked="{Binding Selected.TextBold}" ToolTip.Tip="Bold">
+                      <TextBlock Text="B" FontWeight="Bold" />
+                    </ToggleButton>
+                  </Grid>
+                  <TextBlock Text="Font colour" FontSize="12" Classes="muted" />
+                  <ItemsControl ItemsSource="{x:Static vm:VisualViewModel.Swatches}" ItemsPanel="{StaticResource SwatchPanel}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Button Classes="swatch" Background="{Binding Converter={x:Static v:HexBrushConverter.Instance}}"
+                                Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).Selected.SetTextColorCommand}"
+                                CommandParameter="{Binding}" ToolTip.Tip="{Binding FallbackValue='Default', TargetNullValue='Default'}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+
+                <TextBlock Text="Background" FontWeight="SemiBold" Margin="0,8,0,0" />
+                <ItemsControl ItemsSource="{x:Static vm:VisualViewModel.Swatches}" ItemsPanel="{StaticResource SwatchPanel}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Button Classes="swatch" Background="{Binding Converter={x:Static v:HexBrushConverter.Instance}}"
+                              Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).Selected.SetBackgroundCommand}"
+                              CommandParameter="{Binding}" ToolTip.Tip="{Binding FallbackValue='Default', TargetNullValue='Default'}" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <StackPanel Spacing="6" IsVisible="{Binding Selected.ShowsData, FallbackValue=False}">
+                  <TextBlock Text="Data colours" FontWeight="SemiBold" Margin="0,8,0,0" />
+                  <ItemsControl ItemsSource="{x:Static vm:VisualViewModel.Swatches}" ItemsPanel="{StaticResource SwatchPanel}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Button Classes="swatch" Background="{Binding Converter={x:Static v:HexBrushConverter.Instance}}"
+                                Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).Selected.SetAccentCommand}"
+                                CommandParameter="{Binding}" ToolTip.Tip="{Binding FallbackValue='Default', TargetNullValue='Default'}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+                <TextBlock Classes="muted" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                           Text="The first swatch (empty) goes back to the default." />
+              </StackPanel>
+            </ScrollViewer>
+          </Panel>
+        </DockPanel>
+      </Panel>
+    </Border>
+
+    <!-- Data pane -->
+    <Border Grid.Column="4" Background="{DynamicResource PaneBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1,0,0,0">
+      <Panel>
+        <Button Classes="strip" Command="{Binding OpenDataPaneCommand}" IsVisible="{Binding !ShowDataPane}" ToolTip.Tip="Expand the Data pane">
+          <LayoutTransformControl Margin="0,12,0,0">
+            <LayoutTransformControl.LayoutTransform><RotateTransform Angle="90" /></LayoutTransformControl.LayoutTransform>
+            <TextBlock Text="Data" FontWeight="SemiBold" FontSize="15" />
+          </LayoutTransformControl>
+        </Button>
+        <DockPanel Width="256" IsVisible="{Binding ShowDataPane}">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto">
+            <TextBlock Classes="paneTitle" Text="Data" />
+            <Button Grid.Column="1" Classes="flat" ToolTip.Tip="More options">
+              <TextBlock Text="⋯" FontSize="16" />
+              <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedRight">
+                  <MenuItem Header="View hidden" ToggleType="CheckBox" IsChecked="{Binding ShowHiddenFields}" />
+                  <MenuItem Header="Expand all" Command="{Binding ExpandAllTablesCommand}" />
+                  <MenuItem Header="Collapse all" Command="{Binding CollapseAllTablesCommand}" />
+                  <Separator />
+                  <MenuItem Header="New measure" Command="{Binding NewMeasureCommand}" CommandParameter="{x:Null}" />
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
+            <Button Grid.Column="2" Classes="flat" Command="{Binding CloseDataPaneCommand}" ToolTip.Tip="Collapse" Margin="0,0,6,0">
+              <TextBlock Text="»" FontSize="16" />
+            </Button>
+          </Grid>
+          <TextBox DockPanel.Dock="Top" Margin="10,0,10,8" PlaceholderText="Search" Text="{Binding FieldSearch}">
+            <TextBox.InnerLeftContent>
+              <Path Classes="icon" Data="{StaticResource Icon.Search}" Width="13" Height="13" Margin="8,0,0,0" />
+            </TextBox.InnerLeftContent>
+          </TextBox>
+          <TextBlock DockPanel.Dock="Top" Classes="muted" Margin="14,0" TextWrapping="Wrap" IsVisible="{Binding !HasTables}"
+                     Text="No data yet. Use Get data on the Home ribbon, or drop a file onto the window." />
+          <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Tables}" Margin="4,0,6,12">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:TableNodeViewModel">
+                  <StackPanel IsVisible="{Binding IsVisible}">
+                    <ToggleButton Classes="treeRow" IsChecked="{Binding IsExpanded}">
+                      <ToggleButton.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="New measure"
+                                    Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).NewMeasureCommand}"
+                                    CommandParameter="{Binding Name}" />
+                          <MenuItem Header="View data"
+                                    Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).ViewTableDataCommand}"
+                                    CommandParameter="{Binding}" />
+                          <Separator />
+                          <MenuItem Header="Remove table"
+                                    Command="{Binding $parent[UserControl].((vm:ReportViewModel)DataContext).RemoveTableCommand}"
+                                    CommandParameter="{Binding}" />
+                        </ContextMenu>
+                      </ToggleButton.ContextMenu>
+                      <Grid ColumnDefinitions="14,22,*">
+                        <Path Classes="icon chevron" Data="{StaticResource Icon.ChevronRight}" Width="9" Height="9" />
+                        <Path Grid.Column="1" Classes="icon" Width="14" Height="14"
+                              Data="{Binding IsMeasureTable, Converter={x:Static v:BoolResourceConverter.Instance}, ConverterParameter='Icon.Measure|Icon.DataView'}" />
+                        <TextBlock Grid.Column="2" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                   ToolTip.Tip="{Binding RowCountText}" />
+                      </Grid>
+                    </ToggleButton>
+                    <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding IsExpanded}" Margin="14,0,0,4" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </Panel>
+    </Border>
+  </Grid>
+</UserControl>

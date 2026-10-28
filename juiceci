@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Usage: ./juiceci [report.tsr | data.csv | data.xlsx ...]
+DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+exec dotnet run --project "$DIR/src/Tessera.App" -c Release -- "$@"

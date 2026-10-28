@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Tessera.App.ViewModels"
+        x:Class="Tessera.App.Views.MeasureWindow"
+        x:DataType="vm:MeasureViewModel"
+        Title="{Binding Heading}"
+        Width="640" Height="460" MinWidth="480" MinHeight="380"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource ChromeBrush}">
+  <DockPanel Margin="20,16,20,18">
+    <TextBlock DockPanel.Dock="Top" Text="{Binding Heading}" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,12,0,0">
+      <Button x:Name="CheckButton" Content="Check formula" />
+      <Button x:Name="OkButton" Classes="accent" Content="Save" MinWidth="88" HorizontalContentAlignment="Center" />
+      <Button x:Name="CancelButton" Content="Cancel" MinWidth="88" HorizontalContentAlignment="Center" IsCancel="True" />
+    </StackPanel>
+    <Border DockPanel.Dock="Bottom" Padding="10,6" CornerRadius="4" Background="#FDE7E4" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Foreground="#A4262C" />
+    </Border>
+    <TextBlock DockPanel.Dock="Bottom" Margin="0,6,0,0" IsVisible="{Binding Result, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <Run Text="Value over all rows: " Foreground="{DynamicResource MutedTextBrush}" /><Run Text="{Binding Result}" FontWeight="SemiBold" />
+    </TextBlock>
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,16,Auto,*" RowDefinitions="Auto,Auto" Margin="0,0,0,10">
+      <TextBlock Text="Name" VerticalAlignment="Center" Margin="0,0,10,0" />
+      <TextBox x:Name="NameBox" Grid.Column="1" Text="{Binding Name}" />
+      <TextBlock Grid.Column="3" Text="Home table" VerticalAlignment="Center" Margin="0,0,10,0" />
+      <ComboBox Grid.Column="4" HorizontalAlignment="Stretch" ItemsSource="{Binding Tables}" SelectedItem="{Binding Table}" />
+      <TextBlock Grid.Row="1" Text="Format" VerticalAlignment="Center" Margin="0,10,10,0" />
+      <ComboBox Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" Margin="0,10,0,0"
+                ItemsSource="{x:Static vm:MeasureViewModel.Formats}" SelectedItem="{Binding Format}">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:FormatChoice"><TextBlock Text="{Binding Label}" /></DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+    </Grid>
+    <TextBlock DockPanel.Dock="Top" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6"
+               Text="DAX, for example: CALCULATE(SUM(Sales[Amount]), Sales[Status] = &quot;Won&quot;). Supported: SUM, AVERAGE, MIN, MAX, COUNT, DISTINCTCOUNT, COUNTROWS, the X iterators, CALCULATE with FILTER or conditions, DIVIDE, IF, SWITCH, VAR … RETURN and other measures." />
+    <TextBox Text="{Binding Expression}" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="monospace"
+             VerticalContentAlignment="Top" PlaceholderText="= SUM(Table[Column])" />
+  </DockPanel>
+</Window>

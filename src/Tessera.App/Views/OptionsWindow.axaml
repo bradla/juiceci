@@ -1,0 +1,173 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Tessera.App.ViewModels"
+        x:Class="Tessera.App.Views.OptionsWindow"
+        x:DataType="vm:OptionsViewModel"
+        Title="Options"
+        Width="1040" Height="680" MinWidth="760" MinHeight="480"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource ChromeBrush}">
+  <DockPanel Margin="24,16,24,20">
+    <TextBlock DockPanel.Dock="Top" Text="Options" FontSize="22" FontWeight="SemiBold" Margin="8,0,0,16" />
+
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,16,0,0">
+      <Button x:Name="OkButton" Classes="accent" Content="OK" MinWidth="88" HorizontalContentAlignment="Center" IsDefault="True" />
+      <Button x:Name="CancelButton" Content="Cancel" MinWidth="88" HorizontalContentAlignment="Center" IsCancel="True" />
+    </StackPanel>
+
+    <!-- Page list -->
+    <Border DockPanel.Dock="Left" Width="240" Background="{DynamicResource PaneBrush}" CornerRadius="4"
+            BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" Margin="0,0,20,0">
+      <ScrollViewer>
+        <StackPanel>
+          <TextBlock Classes="optionsGroup" Text="GLOBAL" />
+          <ListBox Classes="optionsNav" ItemsSource="{x:Static vm:OptionsViewModel.GlobalPages}"
+                   SelectedItem="{Binding SelectedGlobalPage}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:OptionsPage">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock Classes="optionsGroup" Text="CURRENT FILE" Margin="12,20,0,4" />
+          <ListBox Classes="optionsNav" ItemsSource="{x:Static vm:OptionsViewModel.FilePages}"
+                   SelectedItem="{Binding SelectedFilePage}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:OptionsPage">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
+      <ScrollViewer>
+        <Panel Margin="22,6,22,22">
+
+          <!-- Global: Data Load -->
+          <StackPanel Classes="optionsBody" Spacing="6"
+                      IsVisible="{Binding PageKey, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=data}">
+            <TextBlock Classes="h" Text="Type Detection" />
+            <RadioButton GroupName="types" IsChecked="{Binding DetectTypes}"
+                         Content="Detect column types for CSV, TSV, text and Excel files" />
+            <RadioButton GroupName="types" IsChecked="{Binding TextOnly}"
+                         Content="Never detect column types: import every column as text" />
+
+            <TextBlock Classes="h" Text="Excel Workbooks" />
+            <RadioButton GroupName="sheets" IsChecked="{Binding AllExcelSheets}" Content="Import every non-empty sheet as its own table" />
+            <RadioButton GroupName="sheets" IsChecked="{Binding FirstSheetOnly}" Content="Import only the first non-empty sheet" />
+
+            <TextBlock Classes="h" Text="Engine Resources" />
+            <TextBlock Classes="muted" TextWrapping="Wrap"
+                       Text="Imports and visuals run on an embedded DuckDB engine, which works on several threads at once. Lower these if loading big files makes the rest of your computer sluggish." />
+            <Grid ColumnDefinitions="360,Auto,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,6,0,0">
+              <TextBlock Text="Maximum number of worker threads" VerticalAlignment="Center" />
+              <NumericUpDown Grid.Column="1" Width="130" Minimum="0" Maximum="256" Increment="1" FormatString="0"
+                             Value="{Binding EngineThreads}" />
+              <Path Grid.Column="2" Classes="icon info" Data="{StaticResource Icon.Info}" ToolTip.Tip="{Binding EngineHint}" />
+              <TextBlock Grid.Row="1" Text="Maximum memory used by the engine (MB)" VerticalAlignment="Center" Margin="0,8,0,0" />
+              <NumericUpDown Grid.Row="1" Grid.Column="1" Width="130" Minimum="0" Maximum="1048576" Increment="256" FormatString="0"
+                             Value="{Binding EngineMemoryMb}" Margin="0,8,0,0" />
+              <Path Grid.Row="1" Grid.Column="2" Classes="icon info" Data="{StaticResource Icon.Info}" Margin="8,8,0,0"
+                    ToolTip.Tip="0 means automatic (DuckDB uses up to 80% of physical memory)." />
+            </Grid>
+
+            <TextBlock Classes="h" Text="Time intelligence" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBlock Text="Group dates on a new axis by" VerticalAlignment="Center" />
+              <ComboBox Width="220" ItemsSource="{x:Static vm:OptionsViewModel.Grains}" SelectedItem="{Binding DefaultGrain}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:GrainChoice">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <Path Classes="icon info" Data="{StaticResource Icon.Info}"
+                    ToolTip.Tip="Applies to date fields you add from now on. Each field's grouping can still be changed in its well." />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Global: Report settings -->
+          <StackPanel Classes="optionsBody" Spacing="6"
+                      IsVisible="{Binding PageKey, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=report}">
+            <TextBlock Classes="h" Text="Layout" />
+            <CheckBox IsChecked="{Binding SnapToGrid}" Content="Snap visuals to a grid when adding, moving and resizing them" />
+            <StackPanel Orientation="Horizontal" Spacing="12" Margin="28,0,0,0" IsEnabled="{Binding SnapToGrid}">
+              <TextBlock Text="Grid size (px)" VerticalAlignment="Center" />
+              <NumericUpDown Width="130" Minimum="2" Maximum="64" Increment="2" FormatString="0" Value="{Binding GridSize}" />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Global: Regional Settings -->
+          <StackPanel Classes="optionsBody" Spacing="6"
+                      IsVisible="{Binding PageKey, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=regional}">
+            <TextBlock Classes="h" Text="Locale for number and date formatting" />
+            <TextBlock Classes="muted" TextWrapping="Wrap"
+                       Text="Sets the thousands and decimal separators in cards, tables and chart labels, and how dates appear in lists." />
+            <ComboBox Width="420" Margin="0,6,0,0" ItemsSource="{x:Static vm:OptionsViewModel.Cultures}" SelectedItem="{Binding Culture}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:CultureChoice">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+              <TextBlock Classes="muted" Text="Example:" />
+              <TextBlock Text="{Binding CulturePreview}" />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Global: Appearance -->
+          <StackPanel Classes="optionsBody" Spacing="6"
+                      IsVisible="{Binding PageKey, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=appearance}">
+            <TextBlock Classes="h" Text="Theme" />
+            <RadioButton GroupName="theme" IsChecked="{Binding IsLightTheme}" Content="Light" />
+            <RadioButton GroupName="theme" IsChecked="{Binding IsDarkTheme}" Content="Dark" />
+            <RadioButton GroupName="theme" IsChecked="{Binding IsSystemTheme}" Content="System default" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Text="The report page always renders light, so what you see is what you save." />
+          </StackPanel>
+
+          <!-- Global: Recent files -->
+          <StackPanel Classes="optionsBody" Spacing="6"
+                      IsVisible="{Binding PageKey, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=recent}">
+            <TextBlock Classes="h" Text="Recent files" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBlock Text="Number of reports to keep on the start screen" VerticalAlignment="Center" />
+              <NumericUpDown Width="130" Minimum="1" Maximum="50" Increment="1" FormatString="0" Value="{Binding RecentLimit}" />
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Current file: Page -->
+          <StackPanel Classes="optionsBody" Spacing="6"
+                      IsVisible="{Binding PageKey, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=page}">
+            <TextBlock Classes="h" Text="Page" />
+            <TextBlock Classes="muted" TextWrapping="Wrap"
+                       Text="Saved with this report. Visuals that would fall off a smaller page are moved and shrunk to fit." />
+            <Grid ColumnDefinitions="160,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,6,0,0">
+              <TextBlock Text="Name" VerticalAlignment="Center" />
+              <TextBox Grid.Column="1" Width="260" Text="{Binding PageName}" />
+              <TextBlock Grid.Row="1" Text="Size" VerticalAlignment="Center" Margin="0,8,0,0" />
+              <ComboBox Grid.Row="1" Grid.Column="1" Width="260" Margin="0,8,0,0"
+                        ItemsSource="{x:Static vm:OptionsViewModel.PageSizes}" SelectedItem="{Binding PageSize}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:PageSizeChoice">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0"
+                          IsEnabled="{Binding IsCustomSize}">
+                <NumericUpDown Width="120" Minimum="320" Maximum="4000" Increment="8" FormatString="0" Value="{Binding PageWidth}" />
+                <TextBlock Text="×" VerticalAlignment="Center" />
+                <NumericUpDown Width="120" Minimum="240" Maximum="4000" Increment="8" FormatString="0" Value="{Binding PageHeight}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Panel>
+      </ScrollViewer>
+    </Border>
+  </DockPanel>
+</Window>

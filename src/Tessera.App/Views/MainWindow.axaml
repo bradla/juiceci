@@ -1,0 +1,110 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Tessera.App.ViewModels"
+        xmlns:v="using:Tessera.App.Views"
+        xmlns:s="using:Tessera.App.Services"
+        x:Class="Tessera.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{Binding Title}"
+        Width="1440" Height="900" MinWidth="960" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource ChromeBrush}">
+  <DockPanel>
+    <!-- Title bar: quick access, document name, search, settings -->
+    <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}">
+      <Grid ColumnDefinitions="Auto,*,Auto" Height="42">
+        <StackPanel Orientation="Horizontal" Margin="12,0,8,0" Spacing="8" VerticalAlignment="Center">
+          <v:LogoMark Width="20" Height="20" />
+          <StackPanel Orientation="Horizontal" Spacing="0">
+            <Button Classes="flat" Command="{Binding SaveCommand}" ToolTip.Tip="Save (Ctrl+S)">
+              <Path Classes="icon" Data="{StaticResource Icon.Save}" Width="15" Height="15" />
+            </Button>
+            <Button Classes="flat" Command="{Binding Report.UndoCommand}" ToolTip.Tip="Undo (Ctrl+Z)">
+              <Path Classes="icon" Data="{StaticResource Icon.Undo}" Width="15" Height="15" />
+            </Button>
+            <Button Classes="flat" Command="{Binding Report.RedoCommand}" ToolTip.Tip="Redo (Ctrl+Y)">
+              <Path Classes="icon" Data="{StaticResource Icon.Redo}" Width="15" Height="15" />
+            </Button>
+          </StackPanel>
+          <TextBlock Text="{Binding DocumentName}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding SavedText}" VerticalAlignment="Center" Classes="muted" />
+        </StackPanel>
+
+        <!-- Search: commands, recent reports, tables and fields -->
+        <AutoCompleteBox x:Name="SearchBox" Grid.Column="1" Width="420" Height="30" VerticalAlignment="Center"
+                         HorizontalAlignment="Center" Margin="12,0" MinimumPrefixLength="1" FilterMode="Contains"
+                         MaxDropDownHeight="360" PlaceholderText="Search (Ctrl+F)"
+                         GotFocus="OnSearchGotFocus" KeyDown="OnSearchKeyDown" DropDownClosed="OnSearchDropDownClosed">
+          <AutoCompleteBox.InnerLeftContent>
+            <Path Classes="icon" Data="{StaticResource Icon.Search}" Width="14" Height="14" Margin="10,0,0,0" />
+          </AutoCompleteBox.InnerLeftContent>
+          <AutoCompleteBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:SearchItem">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Text="{Binding Group}" Classes="muted" FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" />
+              </Grid>
+            </DataTemplate>
+          </AutoCompleteBox.ItemTemplate>
+        </AutoCompleteBox>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8" Margin="0,0,10,0">
+          <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="120" />
+          <Button Classes="flat" Command="{Binding OptionsCommand}" ToolTip.Tip="Options and settings">
+            <Path Classes="icon" Data="{StaticResource Icon.Settings}" Width="17" Height="17" />
+          </Button>
+          <Button Classes="flat" ToolTip.Tip="Theme">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <Path Classes="icon" Data="{StaticResource Icon.Theme}" Width="16" Height="16" />
+              <Path Classes="icon" Data="{StaticResource Icon.ChevronDown}" Width="10" Height="10" />
+            </StackPanel>
+            <Button.Flyout>
+              <MenuFlyout Placement="BottomEdgeAlignedRight">
+                <MenuItem Header="Light" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.Light}">
+                  <MenuItem.Icon><TextBlock Text="✓" IsVisible="{Binding IsLightTheme}" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Dark" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.Dark}">
+                  <MenuItem.Icon><TextBlock Text="✓" IsVisible="{Binding IsDarkTheme}" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="System default" Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.System}">
+                  <MenuItem.Icon><TextBlock Text="✓" IsVisible="{Binding IsSystemTheme}" /></MenuItem.Icon>
+                </MenuItem>
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Ribbon (report only): menu tabs, then the selected tab's command groups -->
+    <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1"
+            IsVisible="{Binding !IsHome}">
+      <v:RibbonView />
+    </Border>
+
+    <!-- Status bar: page position and zoom, as in Power BI -->
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Height="28">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0">
+        <TextBlock Text="{Binding Report.PageIndicator}" VerticalAlignment="Center" FontSize="12" Margin="0,0,16,0"
+                   IsVisible="{Binding IsReportPage}" />
+        <TextBlock Grid.Column="1" Text="{Binding Status}" VerticalAlignment="Center" FontSize="12" Classes="muted" TextTrimming="CharacterEllipsis" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" IsVisible="{Binding IsReportPage}">
+          <Button Classes="flat" Padding="6,0" Command="{Binding Report.ZoomOutCommand}" ToolTip.Tip="Zoom out" Content="−" />
+          <Slider Width="120" Minimum="10" Maximum="400" Value="{Binding Report.ZoomPercent}" VerticalAlignment="Center"
+                  Margin="0,-14" ToolTip.Tip="Zoom" />
+          <Button Classes="flat" Padding="6,0" Command="{Binding Report.ZoomInCommand}" ToolTip.Tip="Zoom in" Content="+" />
+          <TextBlock Text="{Binding Report.ZoomText}" VerticalAlignment="Center" FontSize="12" Width="40" TextAlignment="Right" />
+          <Button Classes="flat" Padding="6,2" Command="{Binding Report.SetZoomCommand}" CommandParameter="{x:Static vm:PageZoom.FitPage}"
+                  ToolTip.Tip="Fit to page">
+            <Path Classes="icon" Data="{StaticResource Icon.FitPage}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Panel>
+      <v:ReportView DataContext="{Binding Report}" IsVisible="{Binding !$parent[Window].((vm:MainViewModel)DataContext).IsHome}" />
+      <v:HomeView IsVisible="{Binding IsHome}" />
+    </Panel>
+  </DockPanel>
+</Window>
