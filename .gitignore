@@ -1,48 +1,96 @@
-# Prerequisites
-*.d
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
 
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
-
-# Linker output
+# Visual Studio / MSBuild
+.vs/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.userprefs
+*.rsuser
+*.dll
+*.exe
+*.pdb
+*.mdb
 *.ilk
 *.map
 *.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
 *.lib
-*.a
-*.la
+*.cache
+*.obj
+*.o
 *.lo
+*.la
 
-# Shared objects (inc. Windows DLLs)
-*.dll
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+artifacts/
+.nuget/
+
+# Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+
+# ReSharper / Rider
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+.idea/
+*.sln.iml
+
+# Roslyn / analyzers cache
+*.ruleset
+*.editorconfig.user
+
+# Debug / symbol files
+*.dSYM/
+*.dSYM.zip
+*.su
+*.idb
+*.dwo
+*.d
+*.elf
+
+# Compiled binaries / libraries (cross-platform)
 *.so
 *.so.*
 *.dylib
-
-# Executables
-*.exe
+*.a
+*.hex
 *.out
 *.app
 *.i*86
 *.x86_64
-*.hex
+*.gch
+*.pch
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
-
-# Kernel Module Compile Results
+# Misc
+*.tmp
+*.log
 *.mod*
 *.cmd
 .tmp_versions/
@@ -51,5 +99,10 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-# debug information files
-*.dwo
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
