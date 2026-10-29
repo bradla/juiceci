@@ -61,21 +61,94 @@ public partial class VisualViewModel : ObservableObject
         }
     }
 
-    public double X { get => Spec.X; set => SetGeometry(value, Spec.Y, Spec.Width, Spec.Height); }
-    public double Y { get => Spec.Y; set => SetGeometry(Spec.X, value, Spec.Width, Spec.Height); }
-    public double Width => Spec.Width;
-    public double Height => Spec.Height;
+    // Geometry is the desktop layout's, or the mobile layout's while the report shows that.
+    bool OnMobile => UseMobile && Spec.Mobile is not null;
+    public double X { get => OnMobile ? Spec.Mobile!.X : Spec.X; set => SetGeometry(value, Y, Width, Height); }
+    public double Y { get => OnMobile ? Spec.Mobile!.Y : Spec.Y; set => SetGeometry(X, value, Width, Height); }
+    public double Width => OnMobile ? Spec.Mobile!.Width : Spec.Width;
+    public double Height => OnMobile ? Spec.Mobile!.Height : Spec.Height;
 
     public void SetGeometry(double x, double y, double width, double height)
     {
-        if (x == Spec.X && y == Spec.Y && width == Spec.Width && height == Spec.Height) return;
-        (Spec.X, Spec.Y, Spec.Width, Spec.Height) = (x, y, width, height);
+        if (x == X && y == Y && width == Width && height == Height) return;
+        if (OnMobile) Spec.Mobile = new MobilePosition(x, y, width, height);
+        else (Spec.X, Spec.Y, Spec.Width, Spec.Height) = (x, y, width, height);
+        NotifyGeometry();
+        _changed(this);
+    }
+
+    void NotifyGeometry()
+    {
         OnPropertyChanged(nameof(X));
         OnPropertyChanged(nameof(Y));
         OnPropertyChanged(nameof(Width));
         OnPropertyChanged(nameof(Height));
+        OnPropertyChanged(nameof(IsOnCanvas));
+    }
+
+    /// <summary>Set by the report while View › Mobile layout is on.</summary>
+    public bool UseMobile
+    {
+        get;
+        set
+        {
+            if (field == value) return;
+            field = value;
+            NotifyGeometry();
+        }
+    }
+
+    /// <summary>Puts the visual on the mobile layout at the given place.</summary>
+    public void PlaceOnMobile(MobilePosition position)
+    {
+        Spec.Mobile = position;
+        NotifyGeometry();
         _changed(this);
     }
+
+    /// <summary>Format painter: takes another visual's look, keeping its own text and picture.</summary>
+    public void ApplyFormat(VisualStyle source)
+    {
+        var style = System.Text.Json.JsonSerializer.Deserialize<VisualStyle>(System.Text.Json.JsonSerializer.Serialize(source))!;
+        (style.Text, style.Image) = (Spec.Style?.Text, Spec.Style?.Image);
+        Spec.Style = style;
+        OnPropertyChanged(nameof(Style));
+        OnPropertyChanged(string.Empty);
+        _changed(this);
+    }
+
+    /// <summary>Selection pane's eye: hidden visuals stay in the report but aren't drawn.</summary>
+    public bool IsHidden
+    {
+        get => Spec.Hidden;
+        set
+        {
+            if (Spec.Hidden == value) return;
+            Spec.Hidden = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsOnCanvas));
+            _changed(this);
+        }
+    }
+
+    /// <summary>Drawn on the page: not hidden, and on the mobile layout when that's showing.</summary>
+    public bool IsOnCanvas => !Spec.Hidden && (!UseMobile || Spec.Mobile is not null);
+
+    /// <summary>The name the Selection pane and Performance analyzer show.</summary>
+    public string LayerName => Spec.Title ?? (ShowsData && !IsEmpty ? AutoTitle : Type switch
+    {
+        VisualType.Text => "Text box",
+        VisualType.Image => "Image",
+        VisualType.Shape when Spec.Style?.Shape is { } shape => shape == "RoundedRectangle" ? "Rounded rectangle" : shape,
+        VisualType.Shape => "Rectangle",
+        VisualType.PageNavigator => "Page navigator",
+        VisualType.BookmarkNavigator => "Bookmark navigator",
+        VisualType.Unsupported => Spec.Style?.Text ?? "Visual",
+        _ => ReportViewModel.VisualTypes.FirstOrDefault(t => t.Type == Type)?.Label ?? Type.ToString(),
+    });
+
+    /// <summary>Raised after each data query with how long the engine took, for the Performance analyzer.</summary>
+    public event Action<VisualViewModel, TimeSpan>? Queried;
 
     /// <summary>User-entered title; empty means use the generated one.</summary>
     public string? CustomTitle
@@ -235,7 +308,7 @@ public partial class VisualViewModel : ObservableObject
         VisualType.DecompositionTree or VisualType.KeyInfluencers => "Explain by",
         VisualType.Table => "Columns",
         VisualType.BarChart => "Y-axis",
-        VisualType.PieChart => "Legend",
+        VisualType.PieChart or VisualType.DonutChart => "Legend",
         _ => "X-axis",
     };
 
@@ -244,7 +317,7 @@ public partial class VisualViewModel : ObservableObject
         VisualType.DecompositionTree or VisualType.KeyInfluencers => "Analyze",
         VisualType.Card => "Field",
         VisualType.BarChart => "X-axis",
-        VisualType.ColumnChart or VisualType.LineChart => "Y-axis",
+        VisualType.ColumnChart or VisualType.LineChart or VisualType.AreaChart => "Y-axis",
         _ => "Values",
     };
 
@@ -264,7 +337,7 @@ public partial class VisualViewModel : ObservableObject
             : Type == VisualType.Table && !field.IsNumeric ? Aggregation.None
             : Type == VisualType.KeyInfluencers ? Aggregation.None
             : Aggregations.DefaultFor(field.Kind);
-        var single = Type is VisualType.Card or VisualType.PieChart || (well == Well.Values && Type.IsAnalysis())
+        var single = Type is VisualType.Card or VisualType.PieChart or VisualType.DonutChart || (well == Well.Values && Type.IsAnalysis())
             || (well == Well.Category && Type != VisualType.Table && !Type.IsAnalysis());
         if (single) list.Clear();
         var grain = well == Well.Category && field.Kind == FieldKind.Date && Type != VisualType.Table
@@ -315,7 +388,7 @@ public partial class VisualViewModel : ObservableObject
             Spec.Category.Clear();
         }
         if (Type != VisualType.Table && !Type.IsAnalysis() && Spec.Category.Count > 1) Spec.Category = Spec.Category.Take(1).ToList();
-        if (Type is VisualType.PieChart or VisualType.DecompositionTree or VisualType.KeyInfluencers && Spec.Values.Count > 1)
+        if (Type is VisualType.PieChart or VisualType.DonutChart or VisualType.DecompositionTree or VisualType.KeyInfluencers && Spec.Values.Count > 1)
             Spec.Values = Spec.Values.Take(1).ToList();
         foreach (var c in Spec.Category.Where(c => c.IsSummarized && Type.IsAnalysis())) c.Aggregation = Aggregation.None;
         if (Type == VisualType.KeyInfluencers)
@@ -363,8 +436,12 @@ public partial class VisualViewModel : ObservableObject
         }
     }
 
+    /// <summary>Optimize › Pause visuals: while this says so, queries wait and the visual is marked stale.</summary>
+    public Func<bool>? IsPaused { get; set; }
+
     public void Refresh()
     {
+        if (IsPaused?.Invoke() == true) return;
         Analysis = null;
         if (IsEmpty || !ShowsData)
         {
@@ -372,14 +449,18 @@ public partial class VisualViewModel : ObservableObject
             Error = null;
             return;
         }
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         if (Type.IsAnalysis())
         {
             Result = null;
             try
             {
-                Analysis = Type == VisualType.DecompositionTree
+                object analysis = Type == VisualType.DecompositionTree
                     ? _engine.Decompose(Spec, _pageFilters?.Invoke())
                     : _engine.KeyInfluencers(Spec, _pageFilters?.Invoke());
+                // Report the query before the visual redraws, so its display time lands on this row.
+                Queried?.Invoke(this, clock.Elapsed);
+                Analysis = analysis;
                 Error = null;
             }
             catch (Exception e)
@@ -391,13 +472,15 @@ public partial class VisualViewModel : ObservableObject
         var limit = Type switch
         {
             VisualType.Table => 1000,
-            VisualType.LineChart => 2000,
-            VisualType.PieChart => 12,
+            VisualType.LineChart or VisualType.AreaChart => 2000,
+            VisualType.PieChart or VisualType.DonutChart => 12,
             _ => 50,
         };
         try
         {
-            Result = _engine.Query(Spec, limit, _pageFilters?.Invoke());
+            var result = _engine.Query(Spec, limit, _pageFilters?.Invoke());
+            Queried?.Invoke(this, clock.Elapsed);
+            Result = result;
             Error = null;
         }
         catch (Exception e)

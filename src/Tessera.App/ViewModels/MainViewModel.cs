@@ -43,19 +43,27 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Set by the main window once it exists.</summary>
     public IDialogs? Dialogs { get; set; }
 
-    public MainViewModel(AppSettings? settings = null, RecentFiles? recent = null)
+    public MainViewModel(AppSettings? settings = null, RecentFiles? recent = null, RecentFiles? recentSources = null)
     {
         Settings = settings ?? new AppSettings();
         Recent = recent ?? new RecentFiles();
+        RecentSources = recentSources ?? new RecentFiles(Path.Combine(Settings.Folder, "recent-sources.json"));
         Report = new ReportViewModel(Engine);
+        _recoveryTimer.Tick += (_, _) => SaveRecoveryCopy();
+        IsHome = Settings.Values.ShowHomeOnStart;
         ApplyPreferences();
         Report.Changed += (_, _) => IsDirty = true;
         Report.MeasureEditor = EditMeasureAsync;
         Report.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ReportViewModel.IsReportView)) OnPropertyChanged(nameof(IsReportPage));
+            if (e.PropertyName == nameof(ReportViewModel.FileSettings)) UpdateImportOptions();
         };
-        Engine.TablesChanged += (_, _) => Dispatcher.UIThread.Post(Report.RefreshTables);
+        Engine.TablesChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+        {
+            Report.RefreshTables();
+            OnPropertyChanged(nameof(RoleNames));
+        });
         RecentAgeFilters = BuildAgeFilters();
         RebuildFolderFilters();
         Recent.Items.CollectionChanged += (_, _) =>
@@ -63,6 +71,8 @@ public partial class MainViewModel : ObservableObject
             RebuildFolderFilters();
             OnRecentChanged();
         };
+        if (RecoveredCount() is > 0 and var n)
+            Status = $"{n} auto-recovered report{(n == 1 ? " is" : "s are")} waiting: Options › Save and Recover › Open auto recovery folder";
     }
 
     // ---- Theme ----
@@ -89,11 +99,27 @@ public partial class MainViewModel : ObservableObject
         var p = Settings.Values;
         Theme = p.Theme;
         ApplyTheme();
-        Engine.Import = new ImportOptions(p.DetectTypes, p.AllExcelSheets);
-        Engine.SetResourceLimits(p.EngineThreads, p.EngineMemoryMb);
+        UpdateImportOptions();
+        var threads = p.EngineThreads > 0 ? p.EngineThreads : OptionsViewModel.DefaultEvaluations;
+        Engine.SetResourceLimits(p.EngineThreads, p.EngineMemoryMb > 0 ? p.EngineMemoryMb * threads : null);
+        Engine.SetTempDirectory(Path.Combine(Settings.Folder, "Cache"), p.DataCacheMb);
         Report.GridSize = p.SnapToGrid ? p.GridSize : 0;
-        Report.DefaultDateGrain = p.DefaultDateGrain;
+        Report.SmartGuides = p.SmartGuides;
+        Report.AlignPageTop = p.AlignPageTop;
+        Report.CopyObjectNames = p.CopyObjectNames;
+        Report.DefaultDateGrain = p.AutoDateTime ? p.DefaultDateGrain : DateGrain.None;
         Recent.Max = p.RecentLimit;
+
+        var o = p.Options;
+        Report.SetPreviewVisuals(OptionsCatalog.Flag(o, OptionsCatalog.PreviewDecompositionTree),
+            OptionsCatalog.Flag(o, OptionsCatalog.PreviewKeyInfluencers));
+        Report.ShowWhitespace = OptionsCatalog.Flag(o, OptionsCatalog.ShowWhitespace);
+        Report.MonospacedPreview = OptionsCatalog.Flag(o, OptionsCatalog.MonospacedPreview);
+        CrashLog.Install();
+        CrashLog.Folder = OptionsCatalog.Flag(o, OptionsCatalog.CrashDumps) ? Path.Combine(Settings.Folder, "Traces") : null;
+        Engine.Trace = OptionsCatalog.Flag(o, OptionsCatalog.Tracing) ? TraceTo(_traceFile ??= NewTraceFile()) : null;
+        _recoveryTimer.Interval = TimeSpan.FromMinutes(Math.Max(1, OptionsCatalog.Number(o, OptionsCatalog.AutoRecoveryMinutes)));
+        _recoveryTimer.IsEnabled = OptionsCatalog.Flag(o, OptionsCatalog.AutoRecovery);
 
         var culture = p.Culture.Length > 0 ? CultureInfo.GetCultureInfo(p.Culture) : OptionsViewModel.SystemCulture;
         if (!Equals(CultureInfo.CurrentCulture, culture))
@@ -105,6 +131,19 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>Type Detection: always, never, or as the report's Current file setting says.</summary>
+    void UpdateImportOptions()
+    {
+        var p = Settings.Values;
+        var detect = p.TypeDetection switch
+        {
+            FileDefault.Always => true,
+            FileDefault.Never => false,
+            _ => OptionsCatalog.Flag(Report.FileSettings, FileSettings.TypeDetection),
+        };
+        Engine.Import = new ImportOptions(detect, p.AllExcelSheets);
+    }
+
     [RelayCommand]
     Task OptionsAsync() => ShowOptionsAsync(pageSettings: false);
 
@@ -112,11 +151,18 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     Task PageSettingsAsync() => ShowOptionsAsync(pageSettings: true);
 
+    /// <summary>Design › Page size › Custom: the Page settings in Options.</summary>
+    [RelayCommand]
+    Task CustomPageSizeAsync() => ShowOptionsAsync(pageSettings: true);
+
     async Task ShowOptionsAsync(bool pageSettings)
     {
         if (Dialogs is null) return;
-        var options = new OptionsViewModel(Settings.Values, Report.PageName, Report.PageWidth, Report.PageHeight);
-        if (pageSettings) options.SelectedFilePage = OptionsViewModel.FilePages[0];
+        var options = new OptionsViewModel(Settings.Values, Report.PageName, Report.PageWidth, Report.PageHeight, Report.FileSettings)
+        {
+            SettingsFolder = Settings.Folder,
+        };
+        if (pageSettings) options.SelectedFilePage = OptionsViewModel.FilePages.First(p => p.Key == "page");
         if (!await Dialogs.ShowOptionsAsync(options)) return;
         ApplyOptions(options);
     }
@@ -124,13 +170,16 @@ public partial class MainViewModel : ObservableObject
     // ---- Ribbon ----
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsHomeTab), nameof(IsInsertTab), nameof(IsModelingTab), nameof(IsViewTab), nameof(IsHelpTab))]
+    [NotifyPropertyChangedFor(nameof(IsHomeTab), nameof(IsInsertTab), nameof(IsModelingTab), nameof(IsDesignTab), nameof(IsViewTab),
+        nameof(IsOptimizeTab), nameof(IsHelpTab))]
     public partial string RibbonTab { get; set; } = "Home";
 
     public bool IsHomeTab => RibbonTab == "Home";
     public bool IsInsertTab => RibbonTab == "Insert";
     public bool IsModelingTab => RibbonTab == "Modeling";
+    public bool IsDesignTab => RibbonTab == "Design";
     public bool IsViewTab => RibbonTab == "View";
+    public bool IsOptimizeTab => RibbonTab == "Optimize";
     public bool IsHelpTab => RibbonTab == "Help";
 
     [ObservableProperty]
@@ -208,9 +257,127 @@ public partial class MainViewModel : ObservableObject
         Settings.Values = options.ToPreferences(Settings.Values);
         Settings.Save();
         ApplyPreferences();
+        Report.SetFileSettings(options.FileValues);
         Report.SetPage(options.PageName, (double)(options.PageWidth ?? (decimal)Report.PageWidth),
             (double)(options.PageHeight ?? (decimal)Report.PageHeight));
         Status = "Options saved";
+    }
+
+    // ---- Diagnostics: tracing ----
+
+    string? _traceFile;
+
+    string NewTraceFile() => Path.Combine(Settings.Folder, "Traces", $"juiceci-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+
+    /// <summary>Appends each engine statement to the session's trace log. The engine runs one statement at a time.</summary>
+    static Action<string> TraceTo(string file) => sql =>
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.AppendAllText(file, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}\t{sql.ReplaceLineEndings(" ")}{Environment.NewLine}");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+    };
+
+    // ---- Save and Recover ----
+
+    readonly DispatcherTimer _recoveryTimer = new();
+    string? _recoveryFile;
+
+    /// <summary>Where unsaved changes are copied: the chosen location, else AutoRecovery beside the settings.</summary>
+    public string RecoveryFolder =>
+        OptionsCatalog.Folder(Settings.Values.Options, OptionsCatalog.RecoveryLocation, Path.Combine(Settings.Folder, "AutoRecovery"));
+
+    /// <summary>Where a report's previous version goes when a save replaces it.</summary>
+    public string BackupFolder => Path.Combine(Settings.Folder, "Backup");
+
+    int RecoveredCount()
+    {
+        try
+        {
+            return Directory.Exists(RecoveryFolder)
+                ? Directory.EnumerateFiles(RecoveryFolder, "*" + ProjectFile.Extension).Count() : 0;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Copies a report with unsaved changes to the auto recovery folder, unless its Current file settings
+    /// opt out. Returns the copy's path, or null when nothing was saved.
+    /// </summary>
+    public string? SaveRecoveryCopy()
+    {
+        if (!IsDirty || IsBusy || OptionsCatalog.Flag(Report.FileSettings, FileSettings.DisableAutoRecovery)) return null;
+        var path = Path.Combine(RecoveryFolder, DocumentName + ProjectFile.Extension);
+        try
+        {
+            Directory.CreateDirectory(RecoveryFolder);
+            ProjectFile.Save(path, Engine, Report.ToDocument());
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return null;
+        }
+        if (_recoveryFile != path) DeleteRecoveryCopy();
+        _recoveryFile = path;
+        return path;
+    }
+
+    /// <summary>
+    /// The user chose not to save. The recovery copy goes, unless Save and Recover says to keep
+    /// the last version; then it's brought up to date and left for good.
+    /// </summary>
+    public void DiscardChanges()
+    {
+        if (OptionsCatalog.Flag(Settings.Values.Options, OptionsCatalog.KeepRecoveryOnClose))
+        {
+            SaveRecoveryCopy();
+            _recoveryFile = null;
+        }
+        else
+        {
+            DeleteRecoveryCopy();
+        }
+    }
+
+    /// <summary>Copies the report a save is about to replace into the backup folder, one version per name.</summary>
+    void BackUp(string path)
+    {
+        if (!File.Exists(path)) return;
+        try
+        {
+            Directory.CreateDirectory(BackupFolder);
+            File.Copy(path, Path.Combine(BackupFolder, Path.GetFileName(path)), overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A failed backup mustn't stop the save itself.
+        }
+    }
+
+    /// <summary>The changes were saved or deliberately thrown away, so the copy isn't needed.</summary>
+    void DeleteRecoveryCopy()
+    {
+        if (_recoveryFile is null) return;
+        try
+        {
+            File.Delete(_recoveryFile);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+        _recoveryFile = null;
+    }
+
+    partial void OnIsDirtyChanged(bool value)
+    {
+        if (!value) DeleteRecoveryCopy();
     }
 
     void ApplyTheme()
@@ -449,6 +616,14 @@ public partial class MainViewModel : ObservableObject
         if (files.Count > 0) await ImportFilesAsync(files);
     }
 
+    /// <summary>The start screen's Power BI file card: opens a .pbix as the report, pages and all, like Power BI's Open.</summary>
+    [RelayCommand]
+    async Task OpenPowerBiFileAsync()
+    {
+        if (Dialogs is null) return;
+        if ((await Dialogs.PickDataFilesAsync("powerbi")).FirstOrDefault() is { } path) await OpenPbixAsync(path);
+    }
+
     [RelayCommand]
     async Task LoadSampleAsync()
     {
@@ -472,8 +647,207 @@ public partial class MainViewModel : ObservableObject
             var names = await RunBusyAsync($"Importing {Path.GetFileName(path)}…", () => Engine.ImportFile(path));
             if (names is null) return;
             created.AddRange(names);
+            RecentSources.Add(Path.GetFullPath(path));
         }
         AfterImport(created);
+    }
+
+    // ---- Home ribbon: data ----
+
+    /// <summary>Data files imported lately, for Home › Recent sources.</summary>
+    public RecentFiles RecentSources { get; }
+
+    [RelayCommand]
+    Task ImportRecentSourceAsync(RecentFile source) => ImportFilesAsync([source.Path]);
+
+    /// <summary>Home › Enter data: a small table typed or pasted in.</summary>
+    [RelayCommand]
+    async Task EnterDataAsync()
+    {
+        if (Dialogs is null) return;
+        var data = new EnterDataViewModel();
+        if (!await Dialogs.ShowEnterDataAsync(data)) return;
+        var name = await RunBusyAsync($"Loading {data.Name}…", () => Engine.ImportText(data.Name, data.Text));
+        if (name is not null) AfterImport([name]);
+    }
+
+    /// <summary>Home › Refresh: reads every table again from the file it came from.</summary>
+    [RelayCommand]
+    async Task RefreshAsync()
+    {
+        var refreshed = await RunBusyAsync("Refreshing data…", () => Engine.RefreshSources());
+        if (refreshed is null) return;
+        if (refreshed.Count == 0)
+        {
+            Status = "Nothing to refresh: only tables loaded from CSV, text, Parquet or JSON files can be read again";
+            return;
+        }
+        Report.RefreshTables();
+        IsDirty = true;
+        Status = refreshed.Count == 1 ? $"Refreshed {refreshed[0]}" : $"Refreshed {refreshed.Count} tables";
+    }
+
+    // ---- Design ribbon ----
+
+    [RelayCommand]
+    async Task CustomizeThemeAsync()
+    {
+        if (Dialogs is null) return;
+        var editor = new CustomizeThemeViewModel(Report.Theme);
+        if (!await Dialogs.ShowCustomizeThemeAsync(editor)) return;
+        Report.ApplyTheme(editor.ToTheme());
+        Status = $"Applied theme {editor.Name}";
+    }
+
+    /// <summary>Saves the report's theme as a Power BI theme file.</summary>
+    [RelayCommand]
+    async Task DownloadThemeAsync()
+    {
+        if (Dialogs is null || await Dialogs.PickThemeSavePathAsync(Report.Theme.Name + ".json") is not { } path) return;
+        var json = Report.Theme.ToJson();
+        if (await RunBusyAsync("Saving theme…", () => { File.WriteAllText(path, json); return true; })) Status = $"Saved theme to {path}";
+    }
+
+    [RelayCommand]
+    async Task ImportThemeAsync()
+    {
+        if (Dialogs is null || await Dialogs.PickThemeFileAsync() is not { } path) return;
+        var theme = await RunBusyAsync($"Reading {Path.GetFileName(path)}…", () => ReportTheme.FromJson(File.ReadAllText(path)));
+        if (theme is null) return;
+        Report.ApplyTheme(theme);
+        Status = $"Applied theme {theme.Name}";
+    }
+
+    [RelayCommand]
+    void HowToCreateTheme() =>
+        Dialogs?.OpenUrl("https://learn.microsoft.com/power-bi/create-reports/desktop-report-themes");
+
+    // ---- Optimize ribbon ----
+
+    /// <summary>Optimize › Optimization presets: query reduction, interactivity, or the options to customize.</summary>
+    [RelayCommand]
+    async Task OptimizationPresetAsync(string preset)
+    {
+        switch (preset)
+        {
+            case "QueryReduction":
+                Report.ApplyOptimizationPreset(reduceQueries: true);
+                Status = "Query reduction preset: cross highlighting off, Apply buttons for slicers and filters";
+                break;
+            case "Interactivity":
+                Report.ApplyOptimizationPreset(reduceQueries: false);
+                Status = "Interactivity preset: cross highlighting on, filters apply instantly";
+                break;
+            default:
+                if (Dialogs is null) return;
+                var options = new OptionsViewModel(Settings.Values, Report.PageName, Report.PageWidth, Report.PageHeight, Report.FileSettings)
+                {
+                    SettingsFolder = Settings.Folder,
+                };
+                options.SelectedFilePage = OptionsViewModel.FilePages.First(p => p.Key == "fquery");
+                if (await Dialogs.ShowOptionsAsync(options)) ApplyOptions(options);
+                break;
+        }
+    }
+
+    // ---- Modeling ribbon ----
+
+    [RelayCommand]
+    async Task ManageRelationshipsAsync()
+    {
+        if (Dialogs is null) return;
+        var relationships = new RelationshipsViewModel(Engine);
+        if (!await Dialogs.ShowRelationshipsAsync(relationships)) return;
+        Engine.Model = relationships.ApplyTo(Engine.Model);
+        Report.RefreshTables();
+        IsDirty = true;
+        Status = $"{Engine.Model.Relationships.Count} relationship{(Engine.Model.Relationships.Count == 1 ? "" : "s")}";
+    }
+
+    [RelayCommand]
+    Task NewColumnAsync() => NewCalculationAsync(isTable: false);
+
+    [RelayCommand]
+    Task NewTableAsync() => NewCalculationAsync(isTable: true);
+
+    async Task NewCalculationAsync(bool isTable)
+    {
+        if (Dialogs is null) return;
+        if (!isTable && Engine.Tables.All(t => t.Fields.All(f => f.IsMeasure)))
+        {
+            await Dialogs.ShowMessageAsync("New column", "Load some data first: a column is worked out for each row of a table.");
+            return;
+        }
+        var calc = new CalculationViewModel(Engine, isTable, Report.Selected?.Spec.Category.FirstOrDefault()?.Table);
+        if (!await Dialogs.ShowCalculationAsync(calc)) return;
+        var name = calc.Name.Trim();
+        var done = await RunBusyAsync($"Adding {name}…", () =>
+        {
+            if (isTable) return Engine.AddCalculatedTable(name, calc.Expression);
+            Engine.AddCalculatedColumn(calc.Table, name, calc.Expression);
+            return calc.Table;
+        });
+        if (done is null) return;
+        Report.RefreshTables();
+        Report.ExpandTables([done]);
+        IsDirty = true;
+        Status = isTable ? $"Added table {done}" : $"Added column {calc.Table}[{name}]";
+    }
+
+    [RelayCommand]
+    async Task ManageRolesAsync()
+    {
+        if (Dialogs is null) return;
+        var roles = new RolesViewModel(Engine);
+        if (!await Dialogs.ShowRolesAsync(roles)) return;
+        Engine.Model = roles.ApplyTo(Engine.Model);
+        if (ViewingAs is not null && Engine.Model.Roles.All(r => r.Name != ViewingAs)) ViewAs(null);
+        else Report.RefreshTables();
+        IsDirty = true;
+        OnPropertyChanged(nameof(RoleNames));
+    }
+
+    /// <summary>The roles View as offers.</summary>
+    public IReadOnlyList<string> RoleNames => Engine.Model.Roles.Select(r => r.Name).ToList();
+
+    /// <summary>Modeling › View as: every visual shows only the rows the role may see.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsViewingAs), nameof(ViewingAsText))]
+    public partial string? ViewingAs { get; private set; }
+
+    public bool IsViewingAs => ViewingAs is not null;
+    public string ViewingAsText => $"Now viewing report as: {ViewingAs}";
+
+    [RelayCommand]
+    void ViewAs(string? role)
+    {
+        Engine.ViewAs = role;
+        ViewingAs = role;
+        Report.RefreshTables();
+        Status = role is null ? "Stopped viewing as a role" : $"Viewing as {role}";
+    }
+
+    /// <summary>Home › Quick measure: opens the measure editor with the chosen calculation written out.</summary>
+    [RelayCommand]
+    async Task QuickMeasureAsync(string key)
+    {
+        if (Dialogs is null) return;
+        var preferred = Report.Selected?.Spec.Values.FirstOrDefault(v => !v.IsMeasure);
+        if (QuickMeasures.Build(key, Engine, preferred) is not { } draft)
+        {
+            await Dialogs.ShowMessageAsync("Quick measure",
+                "Load a table with a number column (and a text column, for the filtered calculations) first.");
+            return;
+        }
+        var editor = new MeasureViewModel(Engine, Engine.Tables.Select(t => t.Name).ToList(), draft.Table, null)
+        {
+            Name = draft.Name, Expression = draft.Expression,
+        };
+        if (MeasureViewModel.Formats.FirstOrDefault(f => f.FormatString == draft.FormatString) is { } format) editor.Format = format;
+        if (!await Dialogs.ShowMeasureAsync(editor)) return;
+        Engine.Model = editor.ApplyTo(Engine.Model);
+        IsDirty = true;
+        Status = $"Added measure [{editor.Name}]";
     }
 
     void AfterImport(IReadOnlyList<string> tables)
@@ -564,7 +938,9 @@ public partial class MainViewModel : ObservableObject
     async Task SaveAsAsync()
     {
         if (Dialogs is null) return;
-        var path = await Dialogs.PickSavePathAsync(DocumentName + ProjectFile.Extension);
+        var folder = FilePath is not null ? Path.GetDirectoryName(FilePath)
+            : OptionsCatalog.Folder(Settings.Values.Options, OptionsCatalog.DefaultSaveLocation, OptionsCatalog.DocumentsFolder);
+        var path = await Dialogs.PickSavePathAsync(DocumentName + ProjectFile.Extension, folder);
         if (path is null) return;
         if (!path.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)) path += ProjectFile.Extension;
         await SaveToAsync(path);
@@ -573,7 +949,12 @@ public partial class MainViewModel : ObservableObject
     async Task<bool> SaveToAsync(string path)
     {
         var doc = Report.ToDocument();
-        var ok = await RunBusyAsync($"Saving {Path.GetFileName(path)}…", () => { ProjectFile.Save(path, Engine, doc); return true; });
+        var ok = await RunBusyAsync($"Saving {Path.GetFileName(path)}…", () =>
+        {
+            BackUp(path);
+            ProjectFile.Save(path, Engine, doc);
+            return true;
+        });
         if (!ok) return false;
         FilePath = path;
         LastSaved = File.GetLastWriteTime(path);
@@ -590,7 +971,9 @@ public partial class MainViewModel : ObservableObject
         if (!IsDirty || Dialogs is null) return true;
         switch (await Dialogs.AskSaveChangesAsync(DocumentName))
         {
-            case SaveChoice.Discard: return true;
+            case SaveChoice.Discard:
+                DiscardChanges();
+                return true;
             case SaveChoice.Cancel: return false;
         }
         await SaveAsync();

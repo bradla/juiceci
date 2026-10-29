@@ -23,7 +23,12 @@ public static class PbixReportImporter
         using var zip = ZipFile.OpenRead(path);
         var reader = new LayoutReader(zip, tables);
         var pages = zip.GetEntry("Report/Layout") is { } layout ? reader.ReadLegacy(layout) : reader.ReadEnhanced();
-        return pages.Count == 0 ? null : new ReportDocument { Pages = pages };
+        return pages.Count == 0 ? null
+            : new ReportDocument
+            {
+                Pages = pages, Settings = FileSettings.FromPbix(zip), LandingPage = reader.LandingPage, Filters = reader.ReportFilters,
+                Theme = reader.ReportTheme,
+            };
     }
 
     /// <summary>Friendly names for Power BI visuals JuiceCI doesn't draw.</summary>
@@ -51,8 +56,10 @@ public static class PbixReportImporter
         "barChart" or "clusteredBarChart" or "hundredPercentStackedBarChart" => VisualType.BarChart,
         "columnChart" or "clusteredColumnChart" or "hundredPercentStackedColumnChart"
             or "lineClusteredColumnComboChart" or "lineStackedColumnComboChart" => VisualType.ColumnChart,
-        "lineChart" or "areaChart" or "stackedAreaChart" or "hundredPercentStackedAreaChart" => VisualType.LineChart,
-        "pieChart" or "donutChart" => VisualType.PieChart,
+        "lineChart" => VisualType.LineChart,
+        "areaChart" or "stackedAreaChart" or "hundredPercentStackedAreaChart" => VisualType.AreaChart,
+        "pieChart" => VisualType.PieChart,
+        "donutChart" => VisualType.DonutChart,
         "card" or "cardVisual" or "multiRowCard" => VisualType.Card,
         "tableEx" or "pivotTable" or "table" or "matrix" => VisualType.Table,
         "decompositionTreeVisual" => VisualType.DecompositionTree,
@@ -65,7 +72,7 @@ public static class PbixReportImporter
         string Type, double X, double Y, double Z, double Width, double Height,
         List<Projection> Projections,
         JsonElement Objects, JsonElement ContainerObjects,
-        IReadOnlyDictionary<string, string> Sources, JsonElement Filters = default);
+        IReadOnlyDictionary<string, string> Sources, JsonElement Filters = default, MobilePosition? Mobile = null);
 
     /// <param name="Label">The name the report shows for the field, when renamed for the visual.</param>
     sealed record Projection(string Role, JsonElement Field, string? Label);
@@ -73,6 +80,15 @@ public static class PbixReportImporter
     sealed class LayoutReader(ZipArchive zip, IReadOnlyList<TableInfo> tables)
     {
         readonly Theme _theme = Theme.Load(zip);
+
+        /// <summary>The landing page's display name, when the report names one.</summary>
+        public string? LandingPage { get; private set; }
+
+        /// <summary>Filters on all pages.</summary>
+        public List<FieldFilter> ReportFilters { get; private set; } = [];
+
+        /// <summary>The report's theme colours, so new visuals match the imported ones.</summary>
+        public ReportTheme ReportTheme => _theme.ToReportTheme();
 
         // ---------------------------------------------------------- Enhanced (PBIR) format
 
@@ -89,6 +105,9 @@ public static class PbixReportImporter
                 var ordered = list.EnumerateArray().Select(p => p.GetString()!).Where(folders.Contains).ToList();
                 folders = [.. ordered, .. folders.Except(ordered)];
             }
+            var landing = Json(root + "pages.json") is { } meta ? Str(meta.RootElement, "landingPageName") : null;
+            if (Json("Report/definition/report.json") is { } report && report.RootElement.TryGetProperty("filterConfig", out var rf))
+                ReportFilters = ReadFilters(Child(rf, "filters"));
 
             var pages = new List<ReportPage>();
             foreach (var folder in folders)
@@ -110,16 +129,21 @@ public static class PbixReportImporter
                                     if (item.TryGetProperty("field", out var field))
                                         projections.Add(new Projection(role.Name, field.Clone(), Str(item, "displayName")));
                     var pos = v.GetProperty("position");
+                    MobilePosition? mobile = null;
+                    if (Json(entry.FullName[..^"visual.json".Length] + "mobile.json") is { } m && m.RootElement.TryGetProperty("position", out var mp))
+                        mobile = new MobilePosition(Num(mp, "x"), Num(mp, "y"), Num(mp, "width"), Num(mp, "height"));
                     visuals.Add(new RawVisual(
                         visual.GetProperty("visualType").GetString() ?? "",
                         Num(pos, "x"), Num(pos, "y"), Num(pos, "z"), Num(pos, "width"), Num(pos, "height"),
                         projections,
                         Child(visual, "objects"), Child(visual, "visualContainerObjects"),
                         new Dictionary<string, string>(),
-                        v.TryGetProperty("filterConfig", out var vf) ? Child(vf, "filters") : default));
+                        v.TryGetProperty("filterConfig", out var vf) ? Child(vf, "filters") : default, mobile));
                 }
                 var built = BuildPage(Str(p, "displayName") ?? folder, Num(p, "width", 1280), Num(p, "height", 720), visuals);
-                built.Background = _theme.Color(Prop(Child(p, "objects"), "background", "color")) ?? _theme.PageBackground;
+                if (folder == landing) LandingPage = built.Name;
+                // A page colour from the theme stays with the theme, so changing themes changes it too.
+                built.Background = _theme.Color(Prop(Child(p, "objects"), "background", "color"));
                 if (p.TryGetProperty("filterConfig", out var pf)) built.Filters = ReadFilters(Child(pf, "filters"));
                 pages.Add(built);
             }
@@ -136,6 +160,7 @@ public static class PbixReportImporter
                 text = reader.ReadToEnd();
             using var layout = JsonDocument.Parse(text);
             if (!layout.RootElement.TryGetProperty("sections", out var sections)) return [];
+            ReportFilters = ReadFilters(ParseEmbedded(layout.RootElement, "filters"));
 
             var pages = new List<(double Ordinal, ReportPage Page)>();
             foreach (var section in sections.EnumerateArray())
@@ -182,7 +207,7 @@ public static class PbixReportImporter
                 var page = BuildPage(Str(section, "displayName") ?? "Page", Num(section, "width", 1280), Num(section, "height", 720), visuals);
                 page.Filters = ReadFilters(ParseEmbedded(section, "filters"));
                 page.Background = _theme.Color(Prop(ParseEmbedded(section, "config") is { ValueKind: JsonValueKind.Object } cfg
-                    ? Child(cfg, "objects") : default, "background", "color")) ?? _theme.PageBackground;
+                    ? Child(cfg, "objects") : default, "background", "color"));
                 pages.Add((Num(section, "ordinal", pages.Count), page));
             }
             return pages.OrderBy(p => p.Ordinal).Select(p => p.Page).ToList();
@@ -199,6 +224,7 @@ public static class PbixReportImporter
                 var spec = BuildVisual(raw, scale);
                 (spec.X, spec.Y) = (Math.Round(raw.X * scale), Math.Round(raw.Y * scale));
                 (spec.Width, spec.Height) = (Math.Max(8, Math.Round(raw.Width * scale)), Math.Max(8, Math.Round(raw.Height * scale)));
+                spec.Mobile = raw.Mobile;
                 page.Visuals.Add(spec);
             }
             return page;
@@ -293,7 +319,7 @@ public static class PbixReportImporter
                 else
                 {
                     if (!field.IsSummarized && spec.Type != VisualType.Table) field.Aggregation = Aggregations.DefaultFor(field.Kind);
-                    if (spec.Type is VisualType.Card or VisualType.PieChart && spec.Values.Count > 0) continue;
+                    if (spec.Type is VisualType.Card or VisualType.PieChart or VisualType.DonutChart && spec.Values.Count > 0) continue;
                     spec.Values.Add(field);
                 }
             }
@@ -616,6 +642,7 @@ public static class PbixReportImporter
                     using var doc = JsonDocument.Parse(stream);
                     var root = doc.RootElement;
                     if (root.ValueKind != JsonValueKind.Object) continue;
+                    if (root.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String) theme._name = name.GetString();
                     if (root.TryGetProperty("dataColors", out var data) && data.ValueKind == JsonValueKind.Array)
                         theme._data = data.EnumerateArray().Select(c => Hex(c.GetString()) ?? "#000000").ToArray();
                     foreach (var p in root.EnumerateObject())
@@ -629,6 +656,14 @@ public static class PbixReportImporter
             }
             return theme;
         }
+
+        public ReportTheme ToReportTheme() => new()
+        {
+            Name = _name ?? "Report theme", DataColors = [.. _data],
+            Background = _named["background"], Foreground = _named["foreground"], PageBackground = PageBackground,
+        };
+
+        string? _name;
 
         /// <summary>Resolves a fill such as <c>{"solid":{"color":{"expr":…}}}</c> to #RRGGBB.</summary>
         public string? Color(JsonElement? fill)

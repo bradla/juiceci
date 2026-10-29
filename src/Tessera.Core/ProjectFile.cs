@@ -26,6 +26,9 @@ public static class ProjectFile
     {
         public string Name { get; set; } = "";
         public string File { get; set; } = "";
+
+        /// <summary>The file the table was imported from, so Refresh can read it again.</summary>
+        public string? Source { get; set; }
     }
 
     public static void Save(string path, DataEngine engine, ReportDocument report)
@@ -42,11 +45,12 @@ public static class ProjectFile
             Directory.CreateDirectory(Path.Combine(work.FullName, "data"));
             // Tables that only hold measures have no data of their own.
             var tables = engine.Tables.Where(t => t.Fields.Any(f => !f.IsMeasure)).ToList();
+            var sources = engine.Sources;
             for (var i = 0; i < tables.Count; i++)
             {
                 var file = $"data/{i}.parquet";
                 engine.ExportParquet(tables[i].Name, Path.Combine(work.FullName, file));
-                manifest.Tables.Add(new TableEntry { Name = tables[i].Name, File = file });
+                manifest.Tables.Add(new TableEntry { Name = tables[i].Name, File = file, Source = sources.GetValueOrDefault(tables[i].Name) });
             }
             File.WriteAllText(Path.Combine(work.FullName, "project.json"), JsonSerializer.Serialize(manifest, Json));
 
@@ -82,6 +86,7 @@ public static class ProjectFile
                 if (!file.StartsWith(work.FullName + Path.DirectorySeparatorChar))
                     throw new InvalidDataException($"Bad table path in project: {t.File}");
                 engine.ImportParquet(file, t.Name);
+                if (t.Source is not null) engine.SetSource(t.Name, t.Source);
             }
             if (manifest.Model is not null) engine.Model = manifest.Model;
             return manifest.Report;

@@ -33,13 +33,13 @@ public enum DateGrain { None, Year, Quarter, Month, Day }
 [JsonConverter(typeof(JsonStringEnumConverter<VisualType>))]
 public enum VisualType
 {
-    Table, Card, BarChart, ColumnChart, LineChart, PieChart,
+    Table, Card, BarChart, ColumnChart, LineChart, PieChart, AreaChart, DonutChart,
 
     // Power BI's AI visuals: their own analysis rather than one grouped query.
     DecompositionTree, KeyInfluencers,
 
     // Layout elements brought in from Power BI reports; they show no data.
-    Text, Shape, Image, PageNavigator,
+    Text, Shape, Image, PageNavigator, BookmarkNavigator,
 
     /// <summary>A Power BI visual JuiceCI can't draw; kept so the page layout stays intact.</summary>
     Unsupported,
@@ -146,6 +146,14 @@ public sealed class VisualSpec
     /// <summary>Filters that apply to this visual only.</summary>
     public List<FieldFilter> Filters { get; set; } = [];
 
+    /// <summary>Hidden from the page with the Selection pane's eye; it still keeps its fields and filters.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Hidden { get; set; }
+
+    /// <summary>Where the visual sits on the phone-sized mobile layout; null when it isn't on it.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MobilePosition? Mobile { get; set; }
+
     /// <summary>Decomposition tree: the value expanded at each level, in <see cref="Category"/> order (null is blank).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string?>? Drill { get; set; }
@@ -219,6 +227,10 @@ public sealed class VisualStyle
     /// <summary>Hide the value axis and its gridlines, leaving data labels (Power BI's "Data labels" style).</summary>
     public bool HideValueAxis { get; set; }
     public bool HideTitle { get; set; }
+    /// <summary>Shape visuals: Oval, RoundedRectangle, Triangle or Arrow; null is a rectangle.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Shape { get; set; }
+
     /// <summary>Base64-encoded PNG or JPEG for image visuals.</summary>
     public string? Image { get; set; }
 }
@@ -234,13 +246,54 @@ public sealed class ReportPage
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Background { get; set; }
 
+    /// <summary>Design › Wallpaper: #RRGGBB around the page; null is the app's canvas colour.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Wallpaper { get; set; }
+
     /// <summary>Filters that apply to every visual on the page.</summary>
     public List<FieldFilter> Filters { get; set; } = [];
+
+    /// <summary>Makes this a drill-through page: other visuals offer to open it filtered to one of these fields' values.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<FieldRef>? DrillThrough { get; set; }
+
+    /// <summary>Drill through › Keep all filters: the source page's filters come along too.</summary>
+    public bool KeepAllFilters { get; set; } = true;
+}
+
+/// <summary>A visual's place on the mobile layout, in phone pixels.</summary>
+public sealed record MobilePosition(double X, double Y, double Width, double Height);
+
+/// <summary>A saved view of the report: which page, its filters, and which visuals were hidden.</summary>
+public sealed class Bookmark
+{
+    public string Name { get; set; } = "Bookmark 1";
+    public string Page { get; set; } = "";
+    public List<FieldFilter> Filters { get; set; } = [];
+    public List<string> HiddenVisuals { get; set; } = [];
 }
 
 public sealed class ReportDocument
 {
     public List<ReportPage> Pages { get; set; } = [new ReportPage()];
+
+    /// <summary>The page the report opens on (Power BI's landing page); null is the first.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LandingPage { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<Bookmark>? Bookmarks { get; set; }
+
+    /// <summary>Filters on all pages.</summary>
+    public List<FieldFilter> Filters { get; set; } = [];
+
+    /// <summary>Colours for series, visuals and pages (Design tab); null is JuiceCI's own.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ReportTheme? Theme { get; set; }
+
+    /// <summary>The Options dialog's Current file choices by <see cref="FileSettings"/> key; a missing key keeps its default.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? Settings { get; set; }
 }
 
 /// <summary>A many-to-one link: each row of <see cref="FromTable"/> matches at most one row of <see cref="ToTable"/>.</summary>
@@ -259,6 +312,18 @@ public sealed record Hierarchy(string Table, string Name, List<string> Levels, s
 /// <summary>Values of <see cref="Column"/> are listed in the order of <see cref="ByColumn"/>, e.g. month names by month number.</summary>
 public sealed record SortRule(string Table, string Column, string ByColumn);
 
+/// <summary>A column worked out per row with a DAX expression over its own table (Modeling › New column).</summary>
+public sealed record CalculatedColumn(string Table, string Name, string Expression);
+
+/// <summary>A table made by a DAX table expression (Modeling › New table).</summary>
+public sealed record CalculatedTable(string Name, string Expression);
+
+/// <summary>A row-level security rule: only rows of <see cref="Table"/> where the DAX condition holds.</summary>
+public sealed record TablePermission(string Table, string Expression);
+
+/// <summary>A security role (Modeling › Manage roles), tried out with View as.</summary>
+public sealed record Role(string Name, List<TablePermission> Permissions);
+
 /// <summary>Relationships, measures and sort orders over the engine's tables, as imported from a Power BI model.</summary>
 public sealed class SemanticModel
 {
@@ -268,12 +333,15 @@ public sealed class SemanticModel
     public List<ColumnDisplay> Columns { get; set; } = [];
     public List<Hierarchy> Hierarchies { get; set; } = [];
     public List<string> HiddenTables { get; set; } = [];
+    public List<CalculatedColumn> CalculatedColumns { get; set; } = [];
+    public List<CalculatedTable> CalculatedTables { get; set; } = [];
+    public List<Role> Roles { get; set; } = [];
 
     public ColumnDisplay? FindColumn(string table, string column) =>
         Columns.FirstOrDefault(c => Same(c.Table, table) && Same(c.Column, column));
 
     public bool IsEmpty => Relationships.Count + Measures.Count + SortRules.Count + Columns.Count + Hierarchies.Count
-        + HiddenTables.Count == 0;
+        + HiddenTables.Count + CalculatedColumns.Count + CalculatedTables.Count + Roles.Count == 0;
 
     /// <summary>A copy without anything that refers to a table, after it's removed.</summary>
     public SemanticModel Without(string table)
@@ -287,6 +355,9 @@ public sealed class SemanticModel
             Columns = Columns.Where(c => Keep(c.Table)).ToList(),
             Hierarchies = Hierarchies.Where(h => Keep(h.Table)).ToList(),
             HiddenTables = HiddenTables.Where(Keep).ToList(),
+            CalculatedColumns = CalculatedColumns.Where(c => Keep(c.Table)).ToList(),
+            CalculatedTables = CalculatedTables.Where(t => Keep(t.Name)).ToList(),
+            Roles = Roles.Select(r => r with { Permissions = r.Permissions.Where(p => Keep(p.Table)).ToList() }).ToList(),
         };
     }
 
@@ -299,14 +370,26 @@ public sealed class SemanticModel
         Columns = [.. Columns, .. other.Columns.Select(c => c with { Table = map(c.Table) })],
         Hierarchies = [.. Hierarchies, .. other.Hierarchies.Select(h => h with { Table = map(h.Table) })],
         HiddenTables = [.. HiddenTables, .. other.HiddenTables.Select(map)],
+        CalculatedColumns = [.. CalculatedColumns, .. other.CalculatedColumns.Select(c => c with { Table = map(c.Table) })],
+        CalculatedTables = [.. CalculatedTables, .. other.CalculatedTables],
+        Roles = [.. Roles, .. other.Roles],
     };
 
     /// <summary>A copy with a different measure list.</summary>
-    public SemanticModel WithMeasures(List<Measure> measures) => new()
+    public SemanticModel WithMeasures(List<Measure> measures) => Copy(m => m.Measures = measures);
+
+    /// <summary>A shallow copy with one change, e.g. <c>Copy(m => m.Roles = roles)</c>.</summary>
+    public SemanticModel Copy(Action<SemanticModel> change)
     {
-        Relationships = Relationships, Measures = measures, SortRules = SortRules,
-        Columns = Columns, Hierarchies = Hierarchies, HiddenTables = HiddenTables,
-    };
+        var copy = new SemanticModel
+        {
+            Relationships = Relationships, Measures = Measures, SortRules = SortRules, Columns = Columns,
+            Hierarchies = Hierarchies, HiddenTables = HiddenTables, CalculatedColumns = CalculatedColumns,
+            CalculatedTables = CalculatedTables, Roles = Roles,
+        };
+        change(copy);
+        return copy;
+    }
 
     public SortRule? FindSortRule(string table, string column) =>
         SortRules.FirstOrDefault(r => Same(r.Table, table) && Same(r.Column, column));

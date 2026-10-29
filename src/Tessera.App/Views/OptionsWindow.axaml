@@ -7,6 +7,23 @@
         Width="1040" Height="680" MinWidth="760" MinHeight="480"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="{DynamicResource ChromeBrush}">
+  <Window.Resources>
+    <!-- Currently used, Clear Cache, and (for most caches) Maximum allowed with Restore Defaults. -->
+    <DataTemplate x:Key="CacheTemplate" x:DataType="vm:CacheViewModel">
+      <StackPanel Spacing="8">
+        <TextBlock Text="{Binding Used}" IsVisible="{Binding HasMaximum}" />
+        <Button Content="Clear Cache" Command="{Binding ClearCommand}" HorizontalAlignment="Left" />
+        <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasMaximum}">
+          <TextBlock Text="Maximum allowed (MB):" VerticalAlignment="Center" />
+          <NumericUpDown Width="110" Minimum="64" Maximum="1048576" Increment="256" FormatString="0"
+                         ShowButtonSpinner="False" Value="{Binding MaxMb}" />
+        </StackPanel>
+        <Button Content="Restore Defaults" Command="{Binding RestoreDefaultsCommand}" HorizontalAlignment="Left"
+                IsVisible="{Binding HasMaximum}" />
+      </StackPanel>
+    </DataTemplate>
+  </Window.Resources>
+
   <DockPanel Margin="24,16,24,20">
     <TextBlock DockPanel.Dock="Top" Text="Options" FontSize="22" FontWeight="SemiBold" Margin="8,0,0,16" />
 
@@ -25,7 +42,7 @@
                    SelectedItem="{Binding SelectedGlobalPage}">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:OptionsPage">
-                <TextBlock Text="{Binding Label}" />
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
@@ -34,7 +51,7 @@
                    SelectedItem="{Binding SelectedFilePage}">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:OptionsPage">
-                <TextBlock Text="{Binding Label}" />
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
@@ -43,39 +60,47 @@
     </Border>
 
     <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
-      <ScrollViewer>
-        <Panel Margin="22,6,22,22">
+      <ScrollViewer x:Name="BodyScroller">
+        <StackPanel Margin="22,6,22,22">
+        <Panel>
 
           <!-- Global: Data Load -->
           <StackPanel Classes="optionsBody" Spacing="6"
                       IsVisible="{Binding PageKey, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=data}">
             <TextBlock Classes="h" Text="Type Detection" />
-            <RadioButton GroupName="types" IsChecked="{Binding DetectTypes}"
-                         Content="Detect column types for CSV, TSV, text and Excel files" />
-            <RadioButton GroupName="types" IsChecked="{Binding TextOnly}"
-                         Content="Never detect column types: import every column as text" />
+            <RadioButton GroupName="types" IsChecked="{Binding AlwaysDetect}" Content="Always detect column types and headers for unstructured sources" />
+            <RadioButton GroupName="types" IsChecked="{Binding DetectPerFile}"
+                         Content="Detect column types and headers for unstructured sources according to each file's setting" />
+            <RadioButton GroupName="types" IsChecked="{Binding NeverDetect}" Content="Never detect column types and headers for unstructured sources" />
 
-            <TextBlock Classes="h" Text="Excel Workbooks" />
-            <RadioButton GroupName="sheets" IsChecked="{Binding AllExcelSheets}" Content="Import every non-empty sheet as its own table" />
-            <RadioButton GroupName="sheets" IsChecked="{Binding FirstSheetOnly}" Content="Import only the first non-empty sheet" />
+            <TextBlock Classes="h" Text="Background Data" />
+            <RadioButton GroupName="background" IsChecked="{Binding AlwaysBackground}" Content="Always allow data previews to download in the background" />
+            <RadioButton GroupName="background" IsChecked="{Binding BackgroundPerFile}"
+                         Content="Allow data previews to download in the background according to each file's setting" />
+            <RadioButton GroupName="background" IsChecked="{Binding NeverBackground}" Content="Never allow data previews to download in the background" />
 
-            <TextBlock Classes="h" Text="Engine Resources" />
-            <TextBlock Classes="muted" TextWrapping="Wrap"
-                       Text="Imports and visuals run on an embedded DuckDB engine, which works on several threads at once. Lower these if loading big files makes the rest of your computer sluggish." />
-            <Grid ColumnDefinitions="360,Auto,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,6,0,0">
-              <TextBlock Text="Maximum number of worker threads" VerticalAlignment="Center" />
-              <NumericUpDown Grid.Column="1" Width="130" Minimum="0" Maximum="256" Increment="1" FormatString="0"
-                             Value="{Binding EngineThreads}" />
+            <TextBlock Classes="h" Text="Parallel loading of tables" />
+            <TextBlock Classes="muted" TextWrapping="Wrap" LineHeight="22"
+                       Text="When you load data into JuiceCI, each table is read by its embedded DuckDB engine. Its queries are evaluated on several threads simultaneously instead of one-by-one, which can speed up the process. In certain situations, you might want to adjust the default number of simultaneous evaluations and memory used." />
+            <Grid ColumnDefinitions="420,Auto,Auto" RowDefinitions="Auto,Auto" Margin="0,10,0,0">
+              <TextBlock Text="Maximum number of simultaneous evaluations" VerticalAlignment="Center" />
+              <NumericUpDown Grid.Column="1" Width="110" Minimum="1" Maximum="256" Increment="1" FormatString="0"
+                             ShowButtonSpinner="False" Value="{Binding EngineThreads}" />
               <Path Grid.Column="2" Classes="icon info" Data="{StaticResource Icon.Info}" ToolTip.Tip="{Binding EngineHint}" />
-              <TextBlock Grid.Row="1" Text="Maximum memory used by the engine (MB)" VerticalAlignment="Center" Margin="0,8,0,0" />
-              <NumericUpDown Grid.Row="1" Grid.Column="1" Width="130" Minimum="0" Maximum="1048576" Increment="256" FormatString="0"
-                             Value="{Binding EngineMemoryMb}" Margin="0,8,0,0" />
-              <Path Grid.Row="1" Grid.Column="2" Classes="icon info" Data="{StaticResource Icon.Info}" Margin="8,8,0,0"
-                    ToolTip.Tip="0 means automatic (DuckDB uses up to 80% of physical memory)." />
+              <TextBlock Grid.Row="1" Text="Maximum memory used per simultaneous evaluation (MB)" VerticalAlignment="Center" Margin="0,10,0,0" />
+              <NumericUpDown Grid.Row="1" Grid.Column="1" Width="110" Minimum="16" Maximum="1048576" Increment="16" FormatString="0"
+                             ShowButtonSpinner="False" Value="{Binding EngineMemoryMb}" Margin="0,10,0,0" />
+              <Path Grid.Row="1" Grid.Column="2" Classes="icon info" Data="{StaticResource Icon.Info}" Margin="8,10,0,0"
+                    ToolTip.Tip="The engine's memory limit is this times the number of simultaneous evaluations. The default shares 80% of this machine's memory between them." />
             </Grid>
 
             <TextBlock Classes="h" Text="Time intelligence" />
-            <StackPanel Orientation="Horizontal" Spacing="12">
+            <StackPanel Orientation="Horizontal">
+              <CheckBox IsChecked="{Binding AutoDateTime}" Content="Auto date/time for new files" />
+              <Path Classes="icon info" Data="{StaticResource Icon.Info}"
+                    ToolTip.Tip="Groups a date field by year, quarter, month or day when you add it to an axis. Turn off to plot exact dates." />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="12" Margin="28,0,0,0" IsEnabled="{Binding AutoDateTime}">
               <TextBlock Text="Group dates on a new axis by" VerticalAlignment="Center" />
               <ComboBox Width="220" ItemsSource="{x:Static vm:OptionsViewModel.Grains}" SelectedItem="{Binding DefaultGrain}">
                 <ComboBox.ItemTemplate>
@@ -84,20 +109,76 @@
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
-              <Path Classes="icon info" Data="{StaticResource Icon.Info}"
-                    ToolTip.Tip="Applies to date fields you add from now on. Each field's grouping can still be changed in its well." />
             </StackPanel>
+
+            <TextBlock Classes="h" Text="DAX Behavior" />
+            <StackPanel Orientation="Horizontal">
+              <CheckBox IsChecked="{Binding ValueFilterIndependent}" Content="Set ValueFilterBehavior to Independent for new files" />
+              <Path Classes="icon info" Data="{StaticResource Icon.Info}"
+                    ToolTip.Tip="Saved for Power BI parity. JuiceCI's measures already filter each column independently." />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Classes="h" Text="Data Cache Management Options" />
+              <Path Classes="icon info" Data="{StaticResource Icon.Info}" Margin="8,0,0,7" VerticalAlignment="Bottom"
+                    ToolTip.Tip="Where the engine writes data that doesn't fit in memory while it loads or queries big tables. The maximum caps how much it may write." />
+            </StackPanel>
+            <ContentControl Content="{Binding DataCache}" ContentTemplate="{StaticResource CacheTemplate}" />
+
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Classes="h" Text="Natural language query cache" />
+              <Path Classes="icon info" Data="{StaticResource Icon.Info}" Margin="8,0,0,7" VerticalAlignment="Bottom"
+                    ToolTip.Tip="Answers to Q&amp;A questions are cached here. JuiceCI doesn't have Q&amp;A yet, so this stays empty; the maximum is saved." />
+            </StackPanel>
+            <ContentControl Content="{Binding QueryCache}" ContentTemplate="{StaticResource CacheTemplate}" />
+
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Classes="h" Text="Folded Artifacts Cache Options" />
+              <Path Classes="icon info" Data="{StaticResource Icon.Info}" Margin="8,0,0,7" VerticalAlignment="Bottom"
+                    ToolTip.Tip="Holds query-folding results for data sources that run queries themselves. JuiceCI imports everything, so this stays empty." />
+            </StackPanel>
+            <ContentControl Content="{Binding FoldedCache}" ContentTemplate="{StaticResource CacheTemplate}" />
+
+            <TextBlock Classes="h" Text="Excel Workbooks" />
+            <RadioButton GroupName="sheets" IsChecked="{Binding AllExcelSheets}" Content="Import every non-empty sheet as its own table" />
+            <RadioButton GroupName="sheets" IsChecked="{Binding FirstSheetOnly}" Content="Import only the first non-empty sheet" />
           </StackPanel>
 
           <!-- Global: Report settings -->
           <StackPanel Classes="optionsBody" Spacing="6"
                       IsVisible="{Binding PageKey, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=report}">
-            <TextBlock Classes="h" Text="Layout" />
+            <TextBlock Classes="h" Text="Visual options" />
+            <CheckBox IsChecked="{Binding SmartGuides}" Content="Display smart guides when visuals are aligned" />
             <CheckBox IsChecked="{Binding SnapToGrid}" Content="Snap visuals to a grid when adding, moving and resizing them" />
             <StackPanel Orientation="Horizontal" Spacing="12" Margin="28,0,0,0" IsEnabled="{Binding SnapToGrid}">
               <TextBlock Text="Grid size (px)" VerticalAlignment="Center" />
-              <NumericUpDown Width="130" Minimum="2" Maximum="64" Increment="2" FormatString="0" Value="{Binding GridSize}" />
+              <NumericUpDown Width="110" Minimum="2" Maximum="64" Increment="2" FormatString="0" Value="{Binding GridSize}" />
             </StackPanel>
+
+            <TextBlock Classes="h" Text="Page alignment" />
+            <RadioButton GroupName="pageAlign" IsChecked="{Binding AlignPageTop}" Content="Align the page to the top of the wallpaper" />
+            <RadioButton GroupName="pageAlign" IsChecked="{Binding AlignPageCenter}" Content="Align the page in the center of the wallpaper" />
+
+            <TextBlock Classes="h" Text="Format pane" />
+            <CheckBox IsChecked="{Binding ExpandFormatSubcategories}" Content="Expand all subcategories by default when you open a category" />
+
+            <TextBlock Classes="h" Text="Start up options" />
+            <CheckBox IsChecked="{Binding ShowHomeOnStart}" Content="Show the Home screen when starting JuiceCI" />
+
+            <TextBlock Classes="h" Text="Customize appearance" />
+            <TextBlock Classes="muted" TextWrapping="Wrap"
+                       Text="Change the overall appearance of JuiceCI. This setting won't affect the report canvas." />
+            <TextBlock Text="Choose an option" Margin="0,6,0,0" />
+            <ComboBox MinWidth="120" HorizontalAlignment="Left" ItemsSource="{x:Static vm:OptionsViewModel.Themes}" SelectedItem="{Binding ThemeOption}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:ThemeChoice">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <TextBlock Classes="h" Text="Report objects" />
+            <CheckBox IsChecked="{Binding CopyObjectNames}" Content="Copy object names when right clicking on report objects" />
           </StackPanel>
 
           <!-- Global: Regional Settings -->
@@ -109,7 +190,7 @@
             <ComboBox Width="420" Margin="0,6,0,0" ItemsSource="{x:Static vm:OptionsViewModel.Cultures}" SelectedItem="{Binding Culture}">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:CultureChoice">
-                  <TextBlock Text="{Binding Label}" />
+                  <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
@@ -117,17 +198,6 @@
               <TextBlock Classes="muted" Text="Example:" />
               <TextBlock Text="{Binding CulturePreview}" />
             </StackPanel>
-          </StackPanel>
-
-          <!-- Global: Appearance -->
-          <StackPanel Classes="optionsBody" Spacing="6"
-                      IsVisible="{Binding PageKey, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=appearance}">
-            <TextBlock Classes="h" Text="Theme" />
-            <RadioButton GroupName="theme" IsChecked="{Binding IsLightTheme}" Content="Light" />
-            <RadioButton GroupName="theme" IsChecked="{Binding IsDarkTheme}" Content="Dark" />
-            <RadioButton GroupName="theme" IsChecked="{Binding IsSystemTheme}" Content="System default" />
-            <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
-                       Text="The report page always renders light, so what you see is what you save." />
           </StackPanel>
 
           <!-- Global: Recent files -->
@@ -154,7 +224,7 @@
                         ItemsSource="{x:Static vm:OptionsViewModel.PageSizes}" SelectedItem="{Binding PageSize}">
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:PageSizeChoice">
-                    <TextBlock Text="{Binding Label}" />
+                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
@@ -167,6 +237,107 @@
             </Grid>
           </StackPanel>
         </Panel>
+
+        <!-- Pages that are lists of settings, from OptionsCatalog -->
+        <ItemsControl ItemsSource="{Binding Sections}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:OptionSectionViewModel">
+              <StackPanel Classes="optionsBody" Spacing="6">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Classes="h" Text="{Binding Heading}" />
+                  <Path Classes="icon info" Data="{StaticResource Icon.Info}" Margin="8,0,0,7" VerticalAlignment="Bottom"
+                        IsVisible="{Binding HasTip}" ToolTip.Tip="{Binding Tip}" />
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Items}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Spacing="6" /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.DataTemplates>
+                    <DataTemplate x:DataType="vm:CheckItemViewModel">
+                      <CheckBox IsChecked="{Binding IsChecked}" Margin="{Binding Indent}" IsEnabled="{Binding IsEnabled}">
+                        <TextBlock TextWrapping="Wrap">
+                          <Run Text="{Binding Label}" />
+                          <InlineUIContainer>
+                            <Path Classes="icon info" Data="{StaticResource Icon.Info}" IsVisible="{Binding HasTip}" ToolTip.Tip="{Binding Tip}"
+                                  ToolTip.ShowOnDisabled="True" />
+                          </InlineUIContainer>
+                        </TextBlock>
+                      </CheckBox>
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:RadioItemViewModel">
+                      <RadioButton GroupName="{Binding Group}" IsChecked="{Binding IsChecked}">
+                        <TextBlock TextWrapping="Wrap">
+                          <Run Text="{Binding Label}" />
+                          <InlineUIContainer>
+                            <Path Classes="icon info" Data="{StaticResource Icon.Info}" IsVisible="{Binding HasTip}" ToolTip.Tip="{Binding Tip}" />
+                          </InlineUIContainer>
+                        </TextBlock>
+                      </RadioButton>
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:ListItemViewModel">
+                      <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding Label}" IsVisible="{Binding HasLabel}" />
+                        <ComboBox MinWidth="120" MaxWidth="420" ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" />
+                      </StackPanel>
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:NumberItemViewModel">
+                      <StackPanel Orientation="Horizontal" Spacing="12" Margin="28,0,0,0">
+                        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                        <NumericUpDown Width="130" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" Increment="1"
+                                       FormatString="0" Value="{Binding Value}" />
+                      </StackPanel>
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:TextItemViewModel">
+                      <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />
+                        <TextBox Width="420" HorizontalAlignment="Left" Text="{Binding Value}" Height="{Binding Height}"
+                                 AcceptsReturn="{Binding Multiline}" TextWrapping="Wrap" />
+                      </StackPanel>
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:NoteItemViewModel">
+                      <TextBlock Classes="muted" Text="{Binding Text}" TextWrapping="Wrap" />
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:ActionItemViewModel">
+                      <Panel HorizontalAlignment="Left">
+                        <Button Content="{Binding Label}" Command="{Binding Command}" IsVisible="{Binding IsButton}" Margin="0,4" />
+                        <Button Classes="link" Command="{Binding Command}" IsVisible="{Binding IsLink}">
+                          <TextBlock Text="{Binding Label}" TextDecorations="Underline" />
+                        </Button>
+                      </Panel>
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:CheckNumberItemViewModel">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <CheckBox IsChecked="{Binding IsChecked}" Content="{Binding Before}" />
+                        <NumericUpDown Width="56" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" FormatString="0"
+                                       ShowButtonSpinner="False" Value="{Binding Value}" IsEnabled="{Binding IsChecked}" />
+                        <TextBlock Text="{Binding After}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:FolderItemViewModel">
+                      <StackPanel Spacing="4" Margin="0,10,0,0">
+                        <TextBlock Text="{Binding Label}" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <TextBox Width="600" Text="{Binding Path}" />
+                          <Button Content="Browse" Command="{Binding BrowseCommand}" MinWidth="80" HorizontalContentAlignment="Center" />
+                        </StackPanel>
+                      </StackPanel>
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:ToggleItemViewModel">
+                      <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                        <Button Content="{Binding ButtonLabel}" Command="{Binding ToggleCommand}" HorizontalAlignment="Left" Margin="0,0,0,8" />
+                      </StackPanel>
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:SubheadItemViewModel">
+                      <TextBlock Text="{Binding Text}" FontWeight="SemiBold" FontSize="14" Margin="0,8,0,0" />
+                    </DataTemplate>
+                  </ItemsControl.DataTemplates>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        </StackPanel>
       </ScrollViewer>
     </Border>
   </DockPanel>

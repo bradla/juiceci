@@ -1,11 +1,12 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Tessera.App.ViewModels"
+             xmlns:c="using:Tessera.Core"
              xmlns:v="using:Tessera.App.Views"
              xmlns:s="using:Tessera.App.Services"
              x:Class="Tessera.App.Views.RibbonView"
              x:DataType="vm:MainViewModel">
-  <!-- Power BI-style ribbon. Every button runs a real command; groups follow Power BI's naming. -->
+  <!-- Power BI-style ribbon, in its groups and order. Features JuiceCI doesn't have are greyed out with a tooltip saying why. -->
   <DockPanel>
     <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="8,0,8,0">
       <StackPanel Orientation="Horizontal">
@@ -13,7 +14,9 @@
         <Button Classes="menuTab" Classes.current="{Binding IsHomeTab}" Content="Home" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Home" />
         <Button Classes="menuTab" Classes.current="{Binding IsInsertTab}" Content="Insert" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Insert" />
         <Button Classes="menuTab" Classes.current="{Binding IsModelingTab}" Content="Modeling" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Modeling" />
+        <Button Classes="menuTab" Classes.current="{Binding IsDesignTab}" Content="Design" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Design" />
         <Button Classes="menuTab" Classes.current="{Binding IsViewTab}" Content="View" Command="{Binding SelectRibbonTabCommand}" CommandParameter="View" />
+        <Button Classes="menuTab" Classes.current="{Binding IsOptimizeTab}" Content="Optimize" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Optimize" />
         <Button Classes="menuTab" Classes.current="{Binding IsHelpTab}" Content="Help" Command="{Binding SelectRibbonTabCommand}" CommandParameter="Help" />
       </StackPanel>
       <Button Grid.Column="1" Classes="flat" Command="{Binding ToggleRibbonCommand}" VerticalAlignment="Center"
@@ -28,7 +31,7 @@
 
     <Border IsVisible="{Binding IsRibbonExpanded}" Height="96" Margin="8,0,8,4">
       <Panel>
-        <!-- Home -->
+        <!-- Home: Power BI's groups, in its order -->
         <StackPanel Orientation="Horizontal" IsVisible="{Binding IsHomeTab}">
           <DockPanel>
             <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Clipboard" />
@@ -36,13 +39,17 @@
               <Button Classes="ribbon" Command="{Binding Report.PasteCommand}" ToolTip.Tip="Paste a copied visual (Ctrl+V)">
                 <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Paste}" /><TextBlock Text="Paste" /></StackPanel>
               </Button>
-              <StackPanel VerticalAlignment="Center">
+              <StackPanel VerticalAlignment="Top" Margin="0,4,0,0">
                 <Button Classes="ribbonSmall" Command="{Binding Report.CutCommand}" ToolTip.Tip="Cut the selected visual (Ctrl+X)">
-                  <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="{StaticResource Icon.Cut}" /><TextBlock Text="Cut" /></StackPanel>
+                  <Path Classes="icon" Data="{StaticResource Icon.Cut}" />
                 </Button>
                 <Button Classes="ribbonSmall" Command="{Binding Report.CopyCommand}" ToolTip.Tip="Copy the selected visual (Ctrl+C)">
-                  <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="{StaticResource Icon.Copy}" /><TextBlock Text="Copy" /></StackPanel>
+                  <Path Classes="icon" Data="{StaticResource Icon.Copy}" />
                 </Button>
+                <ToggleButton Classes="ribbonSmall" IsChecked="{Binding Report.IsFormatPainting, Mode=OneWay}" Command="{Binding Report.FormatPainterCommand}"
+                              ToolTip.Tip="Format painter: copy the selected visual's formatting, then click another visual to apply it">
+                  <Path Classes="icon" Data="{StaticResource Icon.FormatPainter}" />
+                </ToggleButton>
               </StackPanel>
             </StackPanel>
           </DockPanel>
@@ -51,7 +58,7 @@
             <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Data" />
             <StackPanel Orientation="Horizontal">
               <Button Classes="ribbon" ToolTip.Tip="Load data into this report">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Database}" /><TextBlock Text="Get data ▾" /></StackPanel>
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Database}" /><TextBlock Text="Get&#10;data ▾" /></StackPanel>
                 <Button.Flyout>
                   <MenuFlyout Placement="BottomEdgeAlignedLeft">
                     <MenuItem Header="Excel workbook…" Command="{Binding GetDataCommand}" CommandParameter="excel" />
@@ -59,31 +66,40 @@
                     <MenuItem Header="Parquet…" Command="{Binding GetDataCommand}" CommandParameter="parquet" />
                     <MenuItem Header="JSON…" Command="{Binding GetDataCommand}" CommandParameter="json" />
                     <MenuItem Header="Power BI file…" Command="{Binding GetDataCommand}" CommandParameter="powerbi" />
+                    <MenuItem Header="Enter data…" Command="{Binding EnterDataCommand}" />
                     <Separator />
                     <MenuItem Header="Sample data" Command="{Binding LoadSampleCommand}" />
+                    <MenuItem Header="More…" Command="{Binding GetDataCommand}" CommandParameter="any" />
                   </MenuFlyout>
                 </Button.Flyout>
               </Button>
               <Button Classes="ribbon" Command="{Binding GetDataCommand}" CommandParameter="excel" ToolTip.Tip="Import an Excel workbook">
                 <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Workbook}" /><TextBlock Text="Excel&#10;workbook" /></StackPanel>
               </Button>
-              <Button Classes="ribbon" Command="{Binding GetDataCommand}" CommandParameter="text" ToolTip.Tip="Import a CSV or text file">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.TextFile}" /><TextBlock Text="Text/CSV" /></StackPanel>
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="OneLake catalog: data in Microsoft Fabric needs a Microsoft account, which JuiceCI doesn't connect to">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.OneLake}" /><TextBlock Text="OneLake&#10;catalog ▾" /></StackPanel>
               </Button>
-              <Button Classes="ribbon" Command="{Binding GetDataCommand}" CommandParameter="powerbi" ToolTip.Tip="Add the tables and measures of a Power BI file">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.ReportView}" /><TextBlock Text="Power BI&#10;file" /></StackPanel>
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="SQL Server: JuiceCI can't connect to databases yet. Export a table to CSV or Parquet and load that.">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.SqlServer}" /><TextBlock Text="SQL&#10;Server" /></StackPanel>
               </Button>
-              <Button Classes="ribbon" Command="{Binding LoadSampleCommand}" ToolTip.Tip="Add a sample sales table">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Sample}" /><TextBlock Text="Sample&#10;data" /></StackPanel>
+              <Button Classes="ribbon" Command="{Binding EnterDataCommand}" ToolTip.Tip="Type or paste a small table">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.EnterData}" /><TextBlock Text="Enter&#10;data" /></StackPanel>
               </Button>
-              <Button Classes="ribbon" ToolTip.Tip="Reports you opened recently">
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="Dataverse: needs a Microsoft account, which JuiceCI doesn't connect to">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Dataverse}" /><TextBlock Text="Dataverse" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="Load a data file you used recently">
                 <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Clock}" /><TextBlock Text="Recent&#10;sources ▾" /></StackPanel>
                 <Button.Flyout>
-                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{Binding Recent.Items}">
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{Binding RecentSources.Items}">
                     <MenuFlyout.ItemContainerTheme>
                       <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="s:RecentFile">
                         <Setter Property="Header" Value="{Binding Name}" />
-                        <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenRecentCommand}" />
+                        <Setter Property="ToolTip.Tip" Value="{Binding Path}" />
+                        <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).ImportRecentSourceCommand}" />
                         <Setter Property="CommandParameter" Value="{Binding}" />
                       </ControlTheme>
                     </MenuFlyout.ItemContainerTheme>
@@ -94,12 +110,32 @@
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Queries" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="Transform data: JuiceCI has no Power Query editor yet. Table view shows the loaded data.">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.TransformData}" /><TextBlock Text="Transform&#10;data ▾" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding RefreshCommand}" ToolTip.Tip="Read every table again from the file it was loaded from">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.RefreshData}" /><TextBlock Text="Refresh" /></StackPanel>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
             <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Insert" />
             <StackPanel Orientation="Horizontal">
-              <Button Classes="ribbon" ToolTip.Tip="Add a visual to the page">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.NewVisual}" /><TextBlock Text="New&#10;visual ▾" /></StackPanel>
+              <Button Classes="ribbon" Command="{Binding Report.NewVisualCommand}" CommandParameter="{x:Static c:VisualType.ColumnChart}"
+                      ToolTip.Tip="Add a visual to the page">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.NewVisual}" /><TextBlock Text="New&#10;visual" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding Report.InsertTextBoxCommand}" ToolTip.Tip="Add a text box">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.TextBox}" /><TextBlock Text="Text&#10;box" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="Add another kind of visual">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.MoreVisuals}" /><TextBlock Text="More&#10;visuals ▾" /></StackPanel>
                 <Button.Flyout>
-                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{x:Static vm:ReportViewModel.VisualTypes}">
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{Binding Report.AvailableVisualTypes}">
                     <MenuFlyout.ItemContainerTheme>
                       <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:VisualTypeOption">
                         <Setter Property="Header" Value="{Binding Label}" />
@@ -110,60 +146,128 @@
                   </MenuFlyout>
                 </Button.Flyout>
               </Button>
-              <Button Classes="ribbon" Command="{Binding Report.InsertTextBoxCommand}" ToolTip.Tip="Add a text box">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.TextBox}" /><TextBlock Text="Text&#10;box" /></StackPanel>
-              </Button>
             </StackPanel>
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
             <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Calculations" />
-            <Button Classes="ribbon" Command="{Binding Report.NewMeasureCommand}" ToolTip.Tip="Write a DAX measure">
-              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Measure}" /><TextBlock Text="New&#10;measure" /></StackPanel>
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="New visual calculation: not available in JuiceCI yet. Use a measure instead.">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.VisualCalc}" /><TextBlock Text="New visual&#10;calculation ▾" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding Report.NewMeasureCommand}" ToolTip.Tip="Write a DAX measure">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Measure}" /><TextBlock Text="New&#10;measure" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="Pick a common calculation and get its DAX written for you">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.QuickMeasure}" /><TextBlock Text="Quick&#10;measure" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{x:Static vm:QuickMeasures.All}">
+                    <MenuFlyout.ItemContainerTheme>
+                      <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:QuickMeasure">
+                        <Setter Property="Header" Value="{Binding Label}" />
+                        <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).QuickMeasureCommand}" />
+                        <Setter Property="CommandParameter" Value="{Binding Key}" />
+                      </ControlTheme>
+                    </MenuFlyout.ItemContainerTheme>
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Sensitivity" />
+            <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="Sensitivity labels come from Microsoft Purview, which needs a Microsoft account">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Sensitivity}" /><TextBlock Text="Sensitivity&#10;▾" /></StackPanel>
             </Button>
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
-            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Report" />
-            <StackPanel Orientation="Horizontal">
-              <Button Classes="ribbon" Command="{Binding SaveCommand}" ToolTip.Tip="Save as a JuiceCI report (Ctrl+S)">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Save}" /><TextBlock Text="Save" /></StackPanel>
-              </Button>
-              <Button Classes="ribbon" Command="{Binding OpenCommand}" ToolTip.Tip="Open a report (Ctrl+O)">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Folder}" /><TextBlock Text="Open" /></StackPanel>
-              </Button>
-            </StackPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Share" />
+            <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="Publish to the Power BI service: needs a Microsoft account. Save the report (Ctrl+S) to share the file instead.">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Publish}" /><TextBlock Text="Publish" /></StackPanel>
+            </Button>
           </DockPanel>
         </StackPanel>
 
-        <!-- Insert -->
+        <!-- Insert: Power BI's groups, in its order -->
         <StackPanel Orientation="Horizontal" IsVisible="{Binding IsInsertTab}">
           <DockPanel>
             <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Pages" />
-            <Button Classes="ribbon" Command="{Binding Report.AddPageCommand}" ToolTip.Tip="Add a blank page">
-              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Blank}" /><TextBlock Text="New&#10;page" /></StackPanel>
+            <Button Classes="ribbon" ToolTip.Tip="Add a page">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.NewPage}" /><TextBlock Text="New&#10;page ▾" /></StackPanel>
+              <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                  <MenuItem Header="Blank page" Command="{Binding Report.AddPageCommand}" />
+                  <MenuItem Header="Duplicate page" Command="{Binding Report.DuplicatePageCommand}" />
+                </MenuFlyout>
+              </Button.Flyout>
             </Button>
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
             <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Visuals" />
-            <ItemsControl ItemsSource="{x:Static vm:ReportViewModel.VisualTypes}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:VisualTypeOption">
-                  <Button Classes="ribbon" ToolTip.Tip="{Binding Label}"
-                          Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Report.NewVisualCommand}"
-                          CommandParameter="{Binding Type}">
-                    <StackPanel>
-                      <Path Classes="icon" Data="{Binding IconKey, Converter={x:Static v:ResourceKeyConverter.Instance}}" />
-                      <TextBlock Text="{Binding Label}" MaxWidth="64" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </Button>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" Command="{Binding Report.NewVisualCommand}" CommandParameter="{x:Static c:VisualType.ColumnChart}"
+                      ToolTip.Tip="Add a visual to the page">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.NewVisual}" /><TextBlock Text="New&#10;visual" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="Add another kind of visual">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.MoreVisuals}" /><TextBlock Text="More&#10;visuals ▾" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{Binding Report.AvailableVisualTypes}">
+                    <MenuFlyout.ItemContainerTheme>
+                      <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:VisualTypeOption">
+                        <Setter Property="Header" Value="{Binding Label}" />
+                        <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Report.NewVisualCommand}" />
+                        <Setter Property="CommandParameter" Value="{Binding Type}" />
+                      </ControlTheme>
+                    </MenuFlyout.ItemContainerTheme>
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="AI visuals" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" Command="{Binding Report.NewVisualCommand}" CommandParameter="{x:Static c:VisualType.KeyInfluencers}"
+                      IsEnabled="{Binding Report.HasKeyInfluencers}" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="Find what drives a result, such as what makes an opportunity likely to be won">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Visual.KeyInfluencers}" /><TextBlock Text="Key&#10;influencers" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding Report.NewVisualCommand}" CommandParameter="{x:Static c:VisualType.DecompositionTree}"
+                      IsEnabled="{Binding Report.HasDecompositionTree}" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="Break a value down by one field after another">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Visual.DecompositionTree}" /><TextBlock Text="Decomposition&#10;tree" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="Narrative: AI-written summaries aren't available in JuiceCI yet. Use a text box.">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Visual.Narrative}" /><TextBlock Text="Narrative" /></StackPanel>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Power Platform" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="Paginated reports run in the Power BI service, which needs a Microsoft account">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Visual.Paginated}" /><TextBlock Text="Paginated&#10;report" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="Power Apps needs a Microsoft account">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Visual.PowerApps}" /><TextBlock Text="Power&#10;Apps" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="Power Automate needs a Microsoft account">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Visual.PowerAutomate}" /><TextBlock Text="Power&#10;Automate" /></StackPanel>
+              </Button>
+            </StackPanel>
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
@@ -172,46 +276,257 @@
               <Button Classes="ribbon" Command="{Binding Report.InsertTextBoxCommand}" ToolTip.Tip="Add a text box">
                 <StackPanel><Path Classes="icon" Data="{StaticResource Icon.TextBox}" /><TextBlock Text="Text&#10;box" /></StackPanel>
               </Button>
-              <Button Classes="ribbon" Command="{Binding Report.InsertShapeCommand}" ToolTip.Tip="Add a rectangle">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Shape}" /><TextBlock Text="Shape" /></StackPanel>
+              <Button Classes="ribbon" ToolTip.Tip="Add buttons that move around the report">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Buttons}" /><TextBlock Text="Buttons&#10;▾" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                    <MenuItem Header="Page navigator" Command="{Binding Report.InsertPageNavigatorCommand}" />
+                    <MenuItem Header="Bookmark navigator" Command="{Binding Report.InsertBookmarkNavigatorCommand}" />
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="Add a shape">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Shapes}" /><TextBlock Text="Shapes&#10;▾" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                    <MenuItem Header="Rectangle" Command="{Binding Report.InsertShapeCommand}" CommandParameter="Rectangle" />
+                    <MenuItem Header="Rounded rectangle" Command="{Binding Report.InsertShapeCommand}" CommandParameter="RoundedRectangle" />
+                    <MenuItem Header="Oval" Command="{Binding Report.InsertShapeCommand}" CommandParameter="Oval" />
+                    <MenuItem Header="Triangle" Command="{Binding Report.InsertShapeCommand}" CommandParameter="Triangle" />
+                    <MenuItem Header="Arrow" Command="{Binding Report.InsertShapeCommand}" CommandParameter="Arrow" />
+                  </MenuFlyout>
+                </Button.Flyout>
               </Button>
               <Button Classes="ribbon" Command="{Binding InsertImageCommand}" ToolTip.Tip="Add a PNG or JPEG image">
                 <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Image}" /><TextBlock Text="Image" /></StackPanel>
               </Button>
-              <Button Classes="ribbon" Command="{Binding Report.InsertPageNavigatorCommand}" ToolTip.Tip="Add buttons that switch between pages">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Navigator}" /><TextBlock Text="Page&#10;navigator" /></StackPanel>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Sparklines" />
+            <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="Add a sparkline: sparklines in table cells aren't available in JuiceCI yet">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Sparkline}" /><TextBlock Text="Add a&#10;sparkline" /></StackPanel>
+            </Button>
+          </DockPanel>
+        </StackPanel>
+
+        <!-- Modeling: Power BI's groups, in its order -->
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding IsModelingTab}">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Relationships" />
+            <Button Classes="ribbon" Command="{Binding ManageRelationshipsCommand}" ToolTip.Tip="Add, delete or turn off relationships between tables">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Model}" /><TextBlock Text="Manage&#10;relationships" /></StackPanel>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Calculations" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                      ToolTip.Tip="New visual calculation: not available in JuiceCI yet. Use a measure instead.">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.VisualCalc}" /><TextBlock Text="New visual&#10;calculation ▾" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding Report.NewMeasureCommand}" ToolTip.Tip="Write a DAX measure">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Measure}" /><TextBlock Text="New&#10;measure" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="Pick a common calculation and get its DAX written for you">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.QuickMeasure}" /><TextBlock Text="Quick&#10;measure" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{x:Static vm:QuickMeasures.All}">
+                    <MenuFlyout.ItemContainerTheme>
+                      <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:QuickMeasure">
+                        <Setter Property="Header" Value="{Binding Label}" />
+                        <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).QuickMeasureCommand}" />
+                        <Setter Property="CommandParameter" Value="{Binding Key}" />
+                      </ControlTheme>
+                    </MenuFlyout.ItemContainerTheme>
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding NewColumnCommand}" ToolTip.Tip="Add a column worked out for each row with DAX">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.NewColumn}" /><TextBlock Text="New&#10;column" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" Command="{Binding NewTableCommand}" ToolTip.Tip="Add a table made by a DAX table expression">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Grid}" /><TextBlock Text="New&#10;table" /></StackPanel>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Calendars" />
+            <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="Mark as date table: JuiceCI groups any date column by year, quarter, month and day, so no date table needs marking">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Calendar}" /><TextBlock Text="Mark as date&#10;table" /></StackPanel>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Page refresh" />
+            <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="Change detection works with DirectQuery sources; JuiceCI imports its data. Use Home › Refresh.">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.ChangeDetection}" /><TextBlock Text="Change&#10;detection" /></StackPanel>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Parameters" />
+            <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="New parameter: what-if and field parameters drive slicers, which JuiceCI doesn't draw yet">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Parameter}" /><TextBlock Text="New&#10;parameter ▾" /></StackPanel>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Security" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" Command="{Binding ManageRolesCommand}" ToolTip.Tip="Limit which rows each role can see">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Roles}" /><TextBlock Text="Manage&#10;roles" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="See the report as a role would">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.ViewAs}" /><TextBlock Text="View&#10;as" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                    <MenuItem Header="None (all rows)" Command="{Binding ViewAsCommand}" CommandParameter="{x:Null}" />
+                    <MenuItem Header="Roles" ItemsSource="{Binding RoleNames}" IsEnabled="{Binding RoleNames.Count}">
+                      <MenuItem.ItemContainerTheme>
+                        <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="x:String">
+                          <Setter Property="Header" Value="{Binding}" />
+                          <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).ViewAsCommand}" />
+                          <Setter Property="CommandParameter" Value="{Binding}" />
+                        </ControlTheme>
+                      </MenuItem.ItemContainerTheme>
+                    </MenuItem>
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Q&amp;A" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True" ToolTip.Tip="Q&amp;A isn't available in JuiceCI yet">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Visual.QnA}" /><TextBlock Text="Q&amp;A&#10;setup" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True" ToolTip.Tip="Q&amp;A language: Q&amp;A isn't available in JuiceCI yet">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Language}" /><TextBlock Text="Language&#10;▾" /></StackPanel>
+              </Button>
+              <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True" ToolTip.Tip="Linguistic schema: Q&amp;A isn't available in JuiceCI yet">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Linguistic}" /><TextBlock Text="Linguistic&#10;schema ▾" /></StackPanel>
               </Button>
             </StackPanel>
           </DockPanel>
         </StackPanel>
 
-        <!-- Modeling -->
-        <StackPanel Orientation="Horizontal" IsVisible="{Binding IsModelingTab}">
+        <!-- Design: themes and the page's look -->
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding IsDesignTab}">
           <DockPanel>
-            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Calculations" />
-            <Button Classes="ribbon" Command="{Binding Report.NewMeasureCommand}" ToolTip.Tip="Write a DAX measure">
-              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Measure}" /><TextBlock Text="New&#10;measure" /></StackPanel>
-            </Button>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Themes" />
+            <StackPanel Orientation="Horizontal">
+              <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="4" Padding="4" VerticalAlignment="Top" Margin="0,4,0,0">
+                <StackPanel Orientation="Horizontal">
+                  <ItemsControl ItemsSource="{x:Static vm:ReportViewModel.Themes}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="c:ReportTheme">
+                        <Button Classes="themeTile" ToolTip.Tip="{Binding Name}"
+                                Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Report.ApplyThemeCommand}" CommandParameter="{Binding}">
+                          <v:ThemeSwatch Theme="{Binding}" Width="70" Height="44" />
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+              <Button Classes="ribbon" ToolTip.Tip="More themes, and the one this report uses" Margin="6,0,0,0">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.ThemeGallery}" /><TextBlock Text="Theme&#10;gallery" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft" ItemsSource="{x:Static vm:ReportViewModel.Themes}">
+                    <MenuFlyout.ItemContainerTheme>
+                      <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="c:ReportTheme">
+                        <Setter Property="Header" Value="{Binding Name}" />
+                        <Setter Property="Command" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Report.ApplyThemeCommand}" />
+                        <Setter Property="CommandParameter" Value="{Binding}" />
+                      </ControlTheme>
+                    </MenuFlyout.ItemContainerTheme>
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+              <StackPanel VerticalAlignment="Top" Margin="4,4,0,0">
+                <Button Classes="ribbonSmall" Command="{Binding CustomizeThemeCommand}" ToolTip.Tip="Change the theme's name and colours">
+                  <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="{StaticResource Icon.Brush}" /><TextBlock Text="Customize theme" /></StackPanel>
+                </Button>
+                <Button Classes="ribbonSmall" Command="{Binding DownloadThemeCommand}" ToolTip.Tip="Save the theme as a Power BI theme file">
+                  <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="{StaticResource Icon.Download}" /><TextBlock Text="Download theme" /></StackPanel>
+                </Button>
+                <Button Classes="ribbonSmall" Command="{Binding ImportThemeCommand}" ToolTip.Tip="Use a Power BI theme file (.json)">
+                  <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="{StaticResource Icon.Import}" /><TextBlock Text="Import theme" /></StackPanel>
+                </Button>
+              </StackPanel>
+            </StackPanel>
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
-            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Relationships" />
-            <Button Classes="ribbon" Command="{Binding Report.ShowModelViewCommand}" ToolTip.Tip="See tables and their relationships">
-              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Model}" /><TextBlock Text="Model&#10;view" /></StackPanel>
-            </Button>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Customize page" />
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="ribbon" ToolTip.Tip="Change the page's size">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.FitPage}" /><TextBlock Text="Page&#10;size ▾" /></StackPanel>
+                <Button.Flyout>
+                  <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                    <MenuItem Header="16:9" Command="{Binding Report.SetPageSizeCommand}" CommandParameter="{x:Static vm:ReportViewModel.Widescreen}" />
+                    <MenuItem Header="4:3" Command="{Binding Report.SetPageSizeCommand}" CommandParameter="{x:Static vm:ReportViewModel.Standard}" />
+                    <MenuItem Header="Letter" Command="{Binding Report.SetPageSizeCommand}" CommandParameter="{x:Static vm:ReportViewModel.Letter}" />
+                    <MenuItem Header="Tooltip" Command="{Binding Report.SetPageSizeCommand}" CommandParameter="{x:Static vm:ReportViewModel.TooltipSize}" />
+                    <Separator />
+                    <MenuItem Header="Custom…" Command="{Binding CustomPageSizeCommand}" />
+                  </MenuFlyout>
+                </Button.Flyout>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="The colour of the page">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.PageBackground}" /><TextBlock Text="Page&#10;background" /></StackPanel>
+                <Button.Flyout>
+                  <Flyout Placement="BottomEdgeAlignedLeft">
+                    <ItemsControl ItemsSource="{x:Static vm:VisualViewModel.Swatches}" Width="180">
+                      <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Button Classes="swatch" Background="{Binding Converter={x:Static v:HexBrushConverter.Instance}}"
+                                  Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Report.SetPageBackgroundCommand}"
+                                  CommandParameter="{Binding}" ToolTip.Tip="{Binding FallbackValue='Theme default', TargetNullValue='Theme default'}" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Flyout>
+                </Button.Flyout>
+              </Button>
+              <Button Classes="ribbon" ToolTip.Tip="The colour around the page">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Image}" /><TextBlock Text="Wallpaper" /></StackPanel>
+                <Button.Flyout>
+                  <Flyout Placement="BottomEdgeAlignedLeft">
+                    <ItemsControl ItemsSource="{x:Static vm:VisualViewModel.Swatches}" Width="180">
+                      <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Button Classes="swatch" Background="{Binding Converter={x:Static v:HexBrushConverter.Instance}}"
+                                  Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Report.SetWallpaperCommand}"
+                                  CommandParameter="{Binding}" ToolTip.Tip="{Binding FallbackValue='Default', TargetNullValue='Default'}" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Flyout>
+                </Button.Flyout>
+              </Button>
+            </StackPanel>
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
-            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Page" />
-            <Button Classes="ribbon" Command="{Binding PageSettingsCommand}" ToolTip.Tip="Rename and resize this page">
-              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Blank}" /><TextBlock Text="Page&#10;settings" /></StackPanel>
-            </Button>
-          </DockPanel>
-          <Border Classes="groupSep" />
-          <DockPanel>
-            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Data" />
-            <Button Classes="ribbon" Command="{Binding Report.ShowDataViewCommand}" ToolTip.Tip="Browse the rows of each table">
-              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.DataView}" /><TextBlock Text="Table&#10;view" /></StackPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Help" />
+            <Button Classes="ribbon" Command="{Binding HowToCreateThemeCommand}" ToolTip.Tip="Microsoft's guide to Power BI theme files, which JuiceCI reads">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Help}" /><TextBlock Text="How to create&#10;a theme" /></StackPanel>
             </Button>
           </DockPanel>
         </StackPanel>
@@ -220,43 +535,111 @@
         <StackPanel Orientation="Horizontal" IsVisible="{Binding IsViewTab}">
           <DockPanel>
             <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Scale to fit" />
-            <StackPanel Orientation="Horizontal">
-              <Button Classes="ribbon" Command="{Binding Report.SetZoomCommand}" CommandParameter="{x:Static vm:PageZoom.FitPage}">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.FitPage}" /><TextBlock Text="Fit to&#10;page" /></StackPanel>
-              </Button>
-              <Button Classes="ribbon" Command="{Binding Report.SetZoomCommand}" CommandParameter="{x:Static vm:PageZoom.FitWidth}">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.FitWidth}" /><TextBlock Text="Fit to&#10;width" /></StackPanel>
-              </Button>
-              <Button Classes="ribbon" Command="{Binding Report.ActualSizeCommand}">
-                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.ActualSize}" /><TextBlock Text="Actual&#10;size" /></StackPanel>
-              </Button>
+            <Button Classes="ribbon" ToolTip.Tip="Choose how the page fits the window">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.PageView}" /><TextBlock Text="Page&#10;view ▾" /></StackPanel>
+              <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                  <MenuItem Header="Fit to page" Command="{Binding Report.SetZoomCommand}" CommandParameter="{x:Static vm:PageZoom.FitPage}" />
+                  <MenuItem Header="Fit to width" Command="{Binding Report.SetZoomCommand}" CommandParameter="{x:Static vm:PageZoom.FitWidth}" />
+                  <MenuItem Header="Actual size" Command="{Binding Report.ActualSizeCommand}" />
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Mobile" />
+            <ToggleButton Classes="ribbon" IsChecked="{Binding Report.IsMobileLayout}"
+                          ToolTip.Tip="Lay out this page for phones: arrange the visuals that show in the mobile app">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Mobile}" /><TextBlock Text="Mobile&#10;layout" /></StackPanel>
+            </ToggleButton>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Page options" />
+            <StackPanel VerticalAlignment="Top" Margin="6,0">
+              <CheckBox Content="Gridlines" IsChecked="{Binding Report.ShowGridlines}" FontSize="12" MinHeight="22" Height="22"
+                        ToolTip.Tip="Show a grid on the page to help line up visuals" />
+              <CheckBox Content="Snap to grid" IsChecked="{Binding SnapToGrid}" FontSize="12" MinHeight="22" Height="22"
+                        ToolTip.Tip="Snap visuals to the grid when you move or resize them" />
+              <CheckBox Content="Lock objects" IsChecked="{Binding Report.LockObjects}" FontSize="12" MinHeight="22" Height="22"
+                        ToolTip.Tip="Stop visuals from being moved or resized by mistake" />
             </StackPanel>
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
             <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Show panes" />
-            <StackPanel VerticalAlignment="Center" Spacing="0" Margin="6,0">
-              <CheckBox Content="Filters" IsChecked="{Binding Report.ShowFiltersPane}" FontSize="12" MinHeight="24" />
-              <CheckBox Content="Visualizations" IsChecked="{Binding Report.ShowVisualizationsPane}" FontSize="12" MinHeight="24" />
-              <CheckBox Content="Data" IsChecked="{Binding Report.ShowDataPane}" FontSize="12" MinHeight="24" />
+            <StackPanel Orientation="Horizontal">
+              <ToggleButton Classes="ribbon" IsChecked="{Binding Report.IsFiltersPaneOpen}"
+                            ToolTip.Tip="Collapse or expand the filter pane while editing. This also determines how report readers see it">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Filter}" /><TextBlock Text="Filters" /></StackPanel>
+              </ToggleButton>
+              <ToggleButton Classes="ribbon" IsChecked="{Binding Report.ShowBookmarksPane}"
+                            ToolTip.Tip="Save views of the report's pages and come back to them">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Bookmark}" /><TextBlock Text="Bookmarks" /></StackPanel>
+              </ToggleButton>
+              <ToggleButton Classes="ribbon" IsChecked="{Binding Report.ShowSelectionPane}"
+                            ToolTip.Tip="See every visual on the page, select them, and show or hide them">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Selection}" /><TextBlock Text="Selection" /></StackPanel>
+              </ToggleButton>
+              <ToggleButton Classes="ribbon" IsChecked="{Binding Report.ShowPerformancePane}"
+                            ToolTip.Tip="Record how long each visual takes to query and draw">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Performance}" /><TextBlock Text="Performance&#10;analyzer" /></StackPanel>
+              </ToggleButton>
+              <ToggleButton Classes="ribbon" IsChecked="{Binding Report.ShowSyncSlicersPane}"
+                            ToolTip.Tip="Keep a slicer's selection the same across pages">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Sync}" /><TextBlock Text="Sync&#10;slicers" /></StackPanel>
+              </ToggleButton>
+            </StackPanel>
+          </DockPanel>
+        </StackPanel>
+
+        <!-- Optimize: control when visuals query -->
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding IsOptimizeTab}">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Queries" />
+            <StackPanel Orientation="Horizontal">
+              <ToggleButton Classes="ribbon" IsChecked="{Binding Report.IsVisualsPaused}"
+                            ToolTip.Tip="Stop visuals from querying while you make several changes; refresh or un-pause to update them">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Pause}" /><TextBlock Text="Pause&#10;visuals" /></StackPanel>
+              </ToggleButton>
+              <Button Classes="ribbon" Command="{Binding Report.RefreshPausedVisualsCommand}" ToolTip.Tip="Run every visual's query now">
+                <StackPanel><Path Classes="icon" Data="{StaticResource Icon.RefreshVisuals}" /><TextBlock Text="Refresh&#10;visuals" /></StackPanel>
+              </Button>
             </StackPanel>
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
-            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Page options" />
-            <StackPanel VerticalAlignment="Center" Margin="6,0">
-              <CheckBox Content="Snap to grid" IsChecked="{Binding SnapToGrid}" FontSize="12" MinHeight="24" />
-            </StackPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Report" />
+            <Button Classes="ribbon" ToolTip.Tip="Settings that trade interactivity for fewer queries">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Presets}" /><TextBlock Text="Optimization&#10;presets ▾" /></StackPanel>
+              <Button.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                  <MenuItem Header="Query reduction" Command="{Binding OptimizationPresetCommand}" CommandParameter="QueryReduction"
+                            ToolTip.Tip="Turn off cross highlighting; add Apply buttons to slicers and the filter pane" />
+                  <MenuItem Header="Interactivity" Command="{Binding OptimizationPresetCommand}" CommandParameter="Interactivity"
+                            ToolTip.Tip="Cross highlighting on; slicers and filters apply as soon as they change" />
+                  <MenuItem Header="Customize…" Command="{Binding OptimizationPresetCommand}" CommandParameter="Customize"
+                            ToolTip.Tip="Options › Query reduction" />
+                </MenuFlyout>
+              </Button.Flyout>
+            </Button>
           </DockPanel>
           <Border Classes="groupSep" />
           <DockPanel>
-            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Theme" />
-            <StackPanel VerticalAlignment="Center" Margin="6,0">
-              <RadioButton GroupName="ribbonTheme" Content="Light" IsChecked="{Binding IsLightTheme, Mode=OneWay}" FontSize="12" MinHeight="24"
-                           Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.Light}" />
-              <RadioButton GroupName="ribbonTheme" Content="Dark" IsChecked="{Binding IsDarkTheme, Mode=OneWay}" FontSize="12" MinHeight="24"
-                           Command="{Binding SetThemeCommand}" CommandParameter="{x:Static s:AppTheme.Dark}" />
-            </StackPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Review" />
+            <ToggleButton Classes="ribbon" IsChecked="{Binding Report.ShowPerformancePane}"
+                          ToolTip.Tip="Record how long each visual takes to query and draw">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Performance}" /><TextBlock Text="Performance&#10;analyzer" /></StackPanel>
+            </ToggleButton>
+          </DockPanel>
+          <Border Classes="groupSep" />
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Classes="groupLabel" Text="Apply" />
+            <Button Classes="ribbon" IsEnabled="False" ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="Apply all slicers button: JuiceCI doesn't draw slicers yet">
+              <StackPanel><Path Classes="icon" Data="{StaticResource Icon.Buttons}" /><TextBlock Text="Apply all&#10;slicers button" /></StackPanel>
+            </Button>
           </DockPanel>
         </StackPanel>
 

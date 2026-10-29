@@ -1,0 +1,43 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Tessera.App.ViewModels"
+        xmlns:v="using:Tessera.App.Views"
+        x:Class="Tessera.App.Views.CustomizeThemeWindow"
+        x:DataType="vm:CustomizeThemeViewModel"
+        Title="Customize theme"
+        Width="560" Height="560" MinWidth="460" MinHeight="420"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource ChromeBrush}">
+  <Window.Resources>
+    <DataTemplate x:Key="ColorRow" x:DataType="vm:ThemeColorViewModel">
+      <Grid ColumnDefinitions="150,28,*" Margin="0,3">
+        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+        <Border Grid.Column="1" Width="20" Height="20" CornerRadius="3" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1"
+                Background="{Binding Hex, Converter={x:Static v:HexBrushConverter.Instance}}" HorizontalAlignment="Left" />
+        <TextBox Grid.Column="2" Text="{Binding Hex}" FontFamily="monospace" />
+      </Grid>
+    </DataTemplate>
+  </Window.Resources>
+  <DockPanel Margin="20,16,20,18">
+    <TextBlock DockPanel.Dock="Top" Text="Customize theme" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,12,0,0">
+      <Button x:Name="OkButton" Classes="accent" Content="Apply" MinWidth="88" HorizontalContentAlignment="Center" />
+      <Button x:Name="CancelButton" Content="Cancel" MinWidth="88" HorizontalContentAlignment="Center" IsCancel="True" />
+    </StackPanel>
+    <Border DockPanel.Dock="Bottom" Padding="10,6" CornerRadius="4" Background="#FDE7E4" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Foreground="#A4262C" />
+    </Border>
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="150,*" Margin="0,0,0,12">
+      <TextBlock Text="Name" VerticalAlignment="Center" />
+      <TextBox Grid.Column="1" Text="{Binding Name}" />
+    </Grid>
+    <ScrollViewer>
+      <StackPanel>
+        <TextBlock Text="Theme colours" FontWeight="SemiBold" Margin="0,0,0,4" />
+        <ItemsControl ItemsSource="{Binding DataColors}" ItemTemplate="{StaticResource ColorRow}" />
+        <TextBlock Text="Text and backgrounds" FontWeight="SemiBold" Margin="0,12,0,4" />
+        <ItemsControl ItemsSource="{Binding Others}" ItemTemplate="{StaticResource ColorRow}" />
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

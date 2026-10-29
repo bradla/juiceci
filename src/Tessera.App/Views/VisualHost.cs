@@ -24,7 +24,6 @@ public sealed class VisualHost : Border
 
     static readonly IBrush SelectedBorder = new SolidColorBrush(Color.Parse("#0E7C66"));
     static readonly IBrush IdleBorder = new SolidColorBrush(Color.Parse("#E6E6E6"));
-    static readonly IBrush TitleInk = new SolidColorBrush(Color.Parse("#252423"));
 
     readonly ReportViewModel _report;
     readonly TextBlock _title = new()
@@ -100,9 +99,57 @@ public sealed class VisualHost : Border
         AddHandler(PointerPressedEvent, (_, _) => _report.Selected = Vm, RoutingStrategies.Tunnel);
         Attach(header, Drag.Move);
         Attach(_grip, Drag.Resize);
-        if (!vm.ShowsData && vm.Type != VisualType.PageNavigator) Attach(_body, Drag.Move);
+        if (!vm.ShowsData && vm.Type is not (VisualType.PageNavigator or VisualType.BookmarkNavigator)) Attach(_body, Drag.Move);
+        if (vm.Type == VisualType.BookmarkNavigator)
+        {
+            // Bookmarks are added and renamed in their pane; the buttons follow.
+            void Changed(object? s, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => Rebuild();
+            report.Bookmarks.CollectionChanged += Changed;
+            DetachedFromVisualTree += (_, _) => report.Bookmarks.CollectionChanged -= Changed;
+        }
+
+        // Report settings › Copy object names when right clicking on report objects.
+        var copyName = new MenuItem { Header = "Copy object name" };
+        copyName.Click += async (_, _) =>
+        {
+            if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard) await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, Vm.Title);
+        };
+        var offMobile = new MenuItem { Header = "Remove from mobile layout" };
+        offMobile.Click += (_, _) => _report.RemoveFromMobileCommand.Execute(Vm);
+        // Drill through › page › value, for pages whose drill-through field this visual groups by.
+        var drill = new MenuItem { Header = "Drill through" };
+        ContextMenu = new ContextMenu { Items = { drill, copyName, offMobile } };
+        ContextMenu.Opening += (_, e) =>
+        {
+            drill.Items.Clear();
+            foreach (var target in _report.DrillTargets(Vm))
+            {
+                var page = new MenuItem { Header = target.Page };
+                foreach (var value in target.Values)
+                {
+                    var item = new MenuItem { Header = value ?? "(Blank)" };
+                    item.Click += (_, _) => _report.DrillThrough(target, value);
+                    page.Items.Add(item);
+                }
+                drill.Items.Add(page);
+            }
+            drill.IsVisible = drill.Items.Count > 0;
+            copyName.IsVisible = _report.CopyObjectNames;
+            offMobile.IsVisible = _report.IsMobileLayout;
+            e.Cancel = !drill.IsVisible && !copyName.IsVisible && !offMobile.IsVisible;
+        };
 
         vm.PropertyChanged += OnVmChanged;
+        // A new theme recolours every visual that doesn't set its own colours.
+        void ThemeChanged(object? s, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(ReportViewModel.Theme)) return;
+            UpdateBackground();
+            Rebuild();
+        }
+        report.PropertyChanged += ThemeChanged;
+        DetachedFromVisualTree += (_, _) => report.PropertyChanged -= ThemeChanged;
+        IsVisible = vm.IsOnCanvas;
         UpdateGeometry();
         UpdateSelection();
         Rebuild();
@@ -120,6 +167,9 @@ public sealed class VisualHost : Border
                 break;
             case nameof(VisualViewModel.IsSelected):
                 UpdateSelection();
+                break;
+            case nameof(VisualViewModel.IsOnCanvas):
+                IsVisible = Vm.IsOnCanvas;
                 break;
             case nameof(VisualViewModel.Title) or nameof(VisualViewModel.Subtitle):
                 UpdateTitle();
@@ -154,19 +204,29 @@ public sealed class VisualHost : Border
         ZIndex = Vm.IsSelected ? 1 : 0;
     }
 
+    // Shapes other than rectangles draw their own fill, so the frame stays clear.
     void UpdateBackground() =>
-        Background = Vm.Style?.Background is { } bg ? Brush.Parse(bg) : Vm.ShowsData ? Brushes.White : Brushes.Transparent;
+        Background = Vm.Type == VisualType.Shape && Vm.Style?.Shape is not null ? Brushes.Transparent
+            : Vm.Style?.Background is { } bg ? Brush.Parse(bg) : Vm.ShowsData ? Brush.Parse(_report.Theme.Background) : Brushes.Transparent;
 
     void UpdateTitle()
     {
         var hidden = Vm.Style?.HideTitle == true;
         _title.Text = hidden ? "" : Vm.Title;
-        _title.Foreground = Vm.Style?.TitleColor is { } c ? Brush.Parse(c) : TitleInk;
+        _title.Foreground = Vm.Style?.TitleColor is { } c ? Brush.Parse(c) : Brush.Parse(_report.Theme.Foreground);
         _subtitle.Text = hidden ? null : Vm.Subtitle;
         _subtitle.IsVisible = _subtitle.Text is not null;
     }
 
+    /// <summary>Redraws the visual and tells the Performance analyzer how long that took.</summary>
     void Rebuild()
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        RebuildContent();
+        if (Vm.ShowsData) _report.ReportDisplayTime(Vm, clock.Elapsed);
+    }
+
+    void RebuildContent()
     {
         UpdateTitle();
         _header.IsVisible = HasHeader;
@@ -188,7 +248,7 @@ public sealed class VisualHost : Border
         }
         else if (Vm.Result is { } result)
         {
-            _body.Content = ChartRenderer.Build(Vm.Type, result, Vm.Style);
+            _body.Content = ChartRenderer.Build(Vm.Type, result, Vm.Style, _report.Theme);
         }
         else if (Vm.Analysis is { } analysis)
         {
@@ -253,6 +313,20 @@ public sealed class VisualHost : Border
                 }
             case VisualType.PageNavigator:
                 return PageNavigator();
+            case VisualType.BookmarkNavigator:
+                return BookmarkNavigator();
+            case VisualType.Shape when style.Shape is { } kind:
+            {
+                var fill = Brush.Parse(style.Background ?? "#D6E4F0");
+                return kind switch
+                {
+                    "Oval" => new Ellipse { Fill = fill },
+                    "RoundedRectangle" => new Border { Background = fill, CornerRadius = new CornerRadius(Math.Min(Vm.Width, Vm.Height) / 5) },
+                    "Triangle" => new Path { Data = Geometry.Parse("M0,1 L0.5,0 L1,1 Z"), Stretch = Stretch.Fill, Fill = fill },
+                    "Arrow" => new Path { Data = Geometry.Parse("M0,0.3 H0.6 V0 L1,0.5 L0.6,1 V0.7 H0 Z"), Stretch = Stretch.Fill, Fill = fill },
+                    _ => null,
+                };
+            }
             case VisualType.Unsupported:
                 return new StackPanel
                 {
@@ -274,6 +348,40 @@ public sealed class VisualHost : Border
             default:
                 return null;
         }
+    }
+
+    /// <summary>A row of buttons, one per bookmark, like Power BI's bookmark navigator.</summary>
+    Control BookmarkNavigator()
+    {
+        if (_report.Bookmarks.Count == 0)
+            return new TextBlock
+            {
+                Text = "Add bookmarks (View › Bookmarks) to fill this navigator",
+                Classes = { "muted" }, FontSize = 11, TextWrapping = TextWrapping.Wrap,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            };
+        var row = new Avalonia.Controls.Primitives.UniformGrid { Rows = 1 };
+        foreach (var bookmark in _report.Bookmarks)
+        {
+            var button = new Button
+            {
+                Content = bookmark.Name,
+                Padding = new Thickness(4, 0),
+                FontSize = Math.Clamp(Vm.Height * 0.45, 8, 14),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                CornerRadius = default,
+                Margin = new Thickness(1, 0),
+                Background = Brushes.White,
+                Foreground = Brushes.Black,
+            };
+            ToolTip.SetTip(button, $"Show {bookmark.Name}");
+            button.Click += (_, _) => bookmark.ApplyCommand.Execute(null);
+            row.Children.Add(button);
+        }
+        return row;
     }
 
     /// <summary>A row of buttons, one per page, like Power BI's page navigator.</summary>
@@ -311,6 +419,11 @@ public sealed class VisualHost : Border
         handle.PointerPressed += (_, e) =>
         {
             if (!e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed || Parent is not Canvas canvas) return;
+            if (_report.LockObjects)
+            {
+                // View › Lock objects: a click still selects, but nothing moves.
+                return;
+            }
             _drag = kind;
             _dragStart = e.GetPosition(canvas);
             _startRect = new Rect(Vm.X, Vm.Y, Vm.Width, Vm.Height);
@@ -322,10 +435,17 @@ public sealed class VisualHost : Border
             if (_drag != kind || Parent is not Canvas canvas) return;
             var d = e.GetPosition(canvas) - _dragStart;
             var page = canvas.Bounds.Size;
+            var others = _report.Visuals.Where(v => v != Vm).Select(v => new Rect(v.X, v.Y, v.Width, v.Height)).ToList();
+            var guides = new List<(bool Vertical, double At)>();
             if (kind == Drag.Move)
             {
                 var x = Math.Clamp(Snap(_startRect.X + d.X), 0, Math.Max(0, page.Width - _startRect.Width));
                 var y = Math.Clamp(Snap(_startRect.Y + d.Y), 0, Math.Max(0, page.Height - _startRect.Height));
+                if (_report.SmartGuides)
+                {
+                    x = Align(x, _startRect.Width, others.Select(o => (o.X, o.Width)), [0, 0.5, 1], true, guides);
+                    y = Align(y, _startRect.Height, others.Select(o => (o.Y, o.Height)), [0, 0.5, 1], false, guides);
+                }
                 Vm.SetGeometry(x, y, _startRect.Width, _startRect.Height);
             }
             else
@@ -334,16 +454,74 @@ public sealed class VisualHost : Border
                 var (minW, minH) = Vm.ShowsData ? (MinWidth_, MinHeight_) : (16.0, 8.0);
                 var w = Math.Clamp(Snap(_startRect.Width + d.X), minW, Math.Max(minW, page.Width - _startRect.X));
                 var h = Math.Clamp(Snap(_startRect.Height + d.Y), minH, Math.Max(minH, page.Height - _startRect.Y));
+                if (_report.SmartGuides)
+                {
+                    // Only the far edges move when resizing, so only they line up.
+                    w = Math.Max(minW, Align(_startRect.X + w, 0, others.Select(o => (o.X, o.Width)), [0], true, guides) - _startRect.X);
+                    h = Math.Max(minH, Align(_startRect.Y + h, 0, others.Select(o => (o.Y, o.Height)), [0], false, guides) - _startRect.Y);
+                }
                 Vm.SetGeometry(_startRect.X, _startRect.Y, w, h);
             }
+            ShowGuides(canvas, guides);
         };
         handle.PointerReleased += (_, e) =>
         {
             if (_drag != kind) return;
             _drag = Drag.None;
             e.Pointer.Capture(null);
+            if (Parent is Canvas canvas) ShowGuides(canvas, []);
         };
-        handle.PointerCaptureLost += (_, _) => _drag = Drag.None;
+        handle.PointerCaptureLost += (_, _) =>
+        {
+            _drag = Drag.None;
+            if (Parent is Canvas canvas) ShowGuides(canvas, []);
+        };
+    }
+
+    /// <summary>Within this many page pixels, an edge or centre snaps to another visual's.</summary>
+    const double GuideReach = 6;
+
+    /// <summary>
+    /// Power BI's smart guides: moves <paramref name="start"/> so the nearest of its edges or centre
+    /// (<paramref name="anchors"/> as fractions of <paramref name="size"/>) meets one of another visual's,
+    /// and records a guide for each line that now matches.
+    /// </summary>
+    public static double Align(double start, double size, IEnumerable<(double Start, double Size)> others, double[] anchors,
+        bool vertical, List<(bool Vertical, double At)> guides)
+    {
+        var targets = others.SelectMany(o => new[] { o.Start, o.Start + o.Size / 2, o.Start + o.Size }).ToList();
+        var best = (Gap: GuideReach + 1, Shift: 0.0);
+        foreach (var a in anchors)
+            foreach (var t in targets)
+            {
+                var gap = t - (start + a * size);
+                if (Math.Abs(gap) < Math.Abs(best.Gap)) best = (gap, gap);
+            }
+        if (Math.Abs(best.Gap) > GuideReach) return start;
+        start += best.Shift;
+        foreach (var a in anchors)
+            if (targets.Any(t => Math.Abs(t - (start + a * size)) < 0.5)) guides.Add((vertical, start + a * size));
+        return start;
+    }
+
+    /// <summary>Replaces the dashed guide lines on the page.</summary>
+    static void ShowGuides(Canvas canvas, List<(bool Vertical, double At)> guides)
+    {
+        foreach (var old in canvas.Children.OfType<Avalonia.Controls.Shapes.Line>().Where(l => l.Tag as string == "guide").ToList())
+            canvas.Children.Remove(old);
+        var size = canvas.Bounds.Size;
+        foreach (var (vertical, at) in guides.Distinct())
+            canvas.Children.Add(new Avalonia.Controls.Shapes.Line
+            {
+                Tag = "guide",
+                StartPoint = vertical ? new Point(at, 0) : new Point(0, at),
+                EndPoint = vertical ? new Point(at, size.Height) : new Point(size.Width, at),
+                Stroke = new SolidColorBrush(Color.Parse("#D13438")),
+                StrokeThickness = 1,
+                StrokeDashArray = [4, 3],
+                IsHitTestVisible = false,
+                ZIndex = int.MaxValue,
+            });
     }
 
     double Snap(double v) => _report.Snap(v);

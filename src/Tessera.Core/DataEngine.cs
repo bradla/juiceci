@@ -27,6 +27,9 @@ public sealed class DataEngine : IDisposable
 
     public ImportOptions Import { get; set; } = new();
 
+    /// <summary>Called with each statement before it runs, for the Options dialog's tracing.</summary>
+    public Action<string>? Trace { get; set; }
+
     /// <summary>Relationships and measures, as imported from Power BI files. Saved with the project.</summary>
     public SemanticModel Model
     {
@@ -54,6 +57,16 @@ public sealed class DataEngine : IDisposable
         }
     }
 
+    /// <summary>Where DuckDB spills data that doesn't fit in memory (Power BI's "data cache"), and how much it may write there.</summary>
+    public void SetTempDirectory(string path, int? maxMb = null)
+    {
+        lock (_gate)
+        {
+            Execute($"SET temp_directory = {Sql.Literal(path)}");
+            Execute(maxMb is > 0 ? $"SET max_temp_directory_size = '{maxMb}MB'" : "RESET max_temp_directory_size");
+        }
+    }
+
     /// <summary>Raised after tables are added or removed. May fire on a background thread.</summary>
     public event EventHandler? TablesChanged;
 
@@ -70,16 +83,85 @@ public sealed class DataEngine : IDisposable
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         var name = Path.GetFileNameWithoutExtension(path);
+        if (SourceSelect(path) is { } select)
+        {
+            var table = CreateFromSelect(name, select);
+            lock (_gate) _sources[table] = Path.GetFullPath(path);
+            return [table];
+        }
         return ext switch
         {
-            ".csv" or ".tsv" or ".txt" => [CreateFromSelect(name,
-                $"SELECT * FROM read_csv_auto({Sql.Literal(path)}{(Import.DetectTypes ? "" : ", all_varchar = true")})")],
-            ".parquet" => [CreateFromSelect(name, $"SELECT * FROM read_parquet({Sql.Literal(path)})")],
-            ".json" => [CreateFromSelect(name, $"SELECT * FROM read_json_auto({Sql.Literal(path)})")],
             ".xlsx" or ".xls" => ImportExcel(path),
             ".pbix" => ImportPbix(path),
             _ => throw new NotSupportedException($"Unsupported file type: {ext}"),
         };
+    }
+
+    /// <summary>The query that reads a single-table file, or null for workbooks and Power BI files.</summary>
+    string? SourceSelect(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".csv" or ".tsv" or ".txt" =>
+            $"SELECT * FROM read_csv_auto({Sql.Literal(path)}{(Import.DetectTypes ? "" : ", all_varchar = true")})",
+        ".parquet" => $"SELECT * FROM read_parquet({Sql.Literal(path)})",
+        ".json" => $"SELECT * FROM read_json_auto({Sql.Literal(path)})",
+        _ => null,
+    };
+
+    readonly Dictionary<string, string> _sources = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The file each table was read from, where it can be read again (Home › Refresh). Saved with the project.</summary>
+    public IReadOnlyDictionary<string, string> Sources
+    {
+        get { lock (_gate) return new Dictionary<string, string>(_sources, StringComparer.OrdinalIgnoreCase); }
+    }
+
+    public void SetSource(string table, string path)
+    {
+        lock (_gate) _sources[table] = path;
+    }
+
+    /// <summary>Re-reads every table whose source file is still there; returns the tables refreshed.</summary>
+    public IReadOnlyList<string> RefreshSources()
+    {
+        var refreshed = new List<string>();
+        lock (_gate)
+        {
+            foreach (var (table, path) in _sources.ToList())
+            {
+                if (!File.Exists(path) || SourceSelect(path) is not { } select || !_tables.Any(t => t.Name == table)) continue;
+                Execute($"CREATE OR REPLACE TABLE {Sql.Ident(table)} AS {select}");
+                // Re-reading a table drops its calculated columns; work them out again.
+                RefreshSchema();
+                foreach (var c in _model.CalculatedColumns.Where(c => string.Equals(c.Table, table, StringComparison.OrdinalIgnoreCase)))
+                    ApplyCalculatedColumn(table, c.Name, DaxTranslator.TranslateRow(c.Expression, table, _model));
+                refreshed.Add(table);
+            }
+            if (refreshed.Count > 0) RefreshSchema();
+        }
+        if (refreshed.Count > 0) TablesChanged?.Invoke(this, EventArgs.Empty);
+        return refreshed;
+    }
+
+    /// <summary>
+    /// Home › Enter data: a table typed or pasted as text, the first row naming the columns and
+    /// tabs or commas between values. Returns the table's name.
+    /// </summary>
+    public string ImportText(string name, string text)
+    {
+        var lines = text.ReplaceLineEndings("\n").Split('\n').Where(l => l.Trim().Length > 0).ToList();
+        if (lines.Count == 0) throw new FormatException("Type or paste at least a row of column names.");
+        var file = Path.Combine(Directory.CreateTempSubdirectory("juiceci-enter-").FullName, "data.csv");
+        try
+        {
+            File.WriteAllLines(file, lines);
+            var delimiter = lines[0].Contains('\t') ? "\\t" : ",";
+            return CreateFromSelect(string.IsNullOrWhiteSpace(name) ? "Table" : name.Trim(),
+                $"SELECT * FROM read_csv({Sql.Literal(file)}, header = true, delim = '{delimiter}'{(Import.DetectTypes ? "" : ", all_varchar = true")})");
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(file)!, recursive: true);
+        }
     }
 
     public IReadOnlyList<string> ImportExcel(string path) =>
@@ -189,6 +271,7 @@ public sealed class DataEngine : IDisposable
         lock (_gate)
         {
             Execute($"DROP TABLE IF EXISTS {Sql.Ident(name)}");
+            _sources.Remove(name);
             _model = _model.Without(name);
             RefreshSchema();
         }
@@ -200,6 +283,7 @@ public sealed class DataEngine : IDisposable
         lock (_gate)
         {
             foreach (var t in _tables) Execute($"DROP TABLE IF EXISTS {Sql.Ident(t.Name)}");
+            _sources.Clear();
             _model = new SemanticModel();
             RefreshSchema();
         }
@@ -212,9 +296,59 @@ public sealed class DataEngine : IDisposable
     {
         lock (_gate)
         {
-            var sql = QueryBuilder.Build(visual, model ?? _model, limit, pageFilters);
+            var sql = QueryBuilder.Build(visual, model ?? _model, limit, pageFilters, RowFilters(model ?? _model));
             return Run(sql, QueryBuilder.Headers(visual), QueryBuilder.GroupCount(visual)) with { Formats = QueryBuilder.Formats(visual) };
         }
+    }
+
+    // ---- Modeling: calculated columns and tables, roles ----
+
+    /// <summary>The role queries run as (Modeling › View as); null sees every row.</summary>
+    public string? ViewAs { get; set; }
+
+    List<(string Table, string Sql)>? RowFilters(SemanticModel model) =>
+        ViewAs is null || model.Roles.FirstOrDefault(r => r.Name == ViewAs) is not { } role ? null
+            : role.Permissions.Where(p => !string.IsNullOrWhiteSpace(p.Expression))
+                .Select(p => (p.Table, DaxTranslator.TranslateRow(p.Expression, p.Table, model))).ToList();
+
+    /// <summary>Whether a column has no repeated values, so it can be the "one" side of a relationship.</summary>
+    public bool IsUnique(string table, string column)
+    {
+        lock (_gate)
+        {
+            using var cmd = Command($"SELECT count({Sql.Ident(column)}) = count(DISTINCT {Sql.Ident(column)}) FROM {Sql.Ident(table)}");
+            return cmd.ExecuteScalar() is true;
+        }
+    }
+
+    /// <summary>Adds (or replaces) a column computed per row by a DAX expression.</summary>
+    public void AddCalculatedColumn(string table, string name, string expression)
+    {
+        lock (_gate)
+        {
+            var sql = DaxTranslator.TranslateRow(expression, table, _model);
+            ApplyCalculatedColumn(table, name, sql);
+            _model = _model.Copy(m => m.CalculatedColumns =
+                [.. m.CalculatedColumns.Where(c => !(c.Table == table && c.Name == name)), new CalculatedColumn(table, name, expression)]);
+            RefreshSchema();
+        }
+        TablesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    void ApplyCalculatedColumn(string table, string name, string sql)
+    {
+        var exists = _tables.FirstOrDefault(t => t.Name == table)?.Fields.Any(f => f.Name == name && !f.IsMeasure) == true;
+        var keep = exists ? $"* EXCLUDE ({Sql.Ident(name)})" : "*";
+        Execute($"CREATE OR REPLACE TABLE {Sql.Ident(table)} AS SELECT {keep}, ({sql}) AS {Sql.Ident(name)} FROM {Sql.Ident(table)}");
+    }
+
+    /// <summary>Creates a table from a DAX table expression; returns its name.</summary>
+    public string AddCalculatedTable(string name, string expression)
+    {
+        var sql = DaxTranslator.TranslateTable(expression, Model);
+        var created = CreateFromSelect(name, sql);
+        lock (_gate) _model = _model.Copy(m => m.CalculatedTables = [.. m.CalculatedTables, new CalculatedTable(created, expression)]);
+        return created;
     }
 
     /// <summary>A decomposition tree visual's levels along its expanded path.</summary>
@@ -230,9 +364,8 @@ public sealed class DataEngine : IDisposable
     {
         lock (_gate)
         {
-            using var cmd = _conn.CreateCommand();
             var col = Sql.Ident(column);
-            cmd.CommandText = $"SELECT DISTINCT CAST({col} AS VARCHAR) FROM {Sql.Ident(table)} ORDER BY 1 NULLS FIRST LIMIT {limit}";
+            using var cmd = Command($"SELECT DISTINCT CAST({col} AS VARCHAR) FROM {Sql.Ident(table)} ORDER BY 1 NULLS FIRST LIMIT {limit}");
             using var reader = cmd.ExecuteReader();
             var values = new List<string?>();
             while (reader.Read()) values.Add(reader.IsDBNull(0) ? null : reader.GetString(0));
@@ -264,10 +397,17 @@ public sealed class DataEngine : IDisposable
         return name;
     }
 
+    DuckDBCommand Command(string sql)
+    {
+        Trace?.Invoke(sql);
+        var cmd = _conn.CreateCommand();
+        cmd.CommandText = sql;
+        return cmd;
+    }
+
     QueryResult Run(string sql, IReadOnlyList<string> headers, int categoryCount)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = sql;
+        using var cmd = Command(sql);
         using var reader = cmd.ExecuteReader();
         var rows = new List<object?[]>();
         while (reader.Read())
@@ -282,8 +422,7 @@ public sealed class DataEngine : IDisposable
 
     void Execute(string sql)
     {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = sql;
+        using var cmd = Command(sql);
         cmd.ExecuteNonQuery();
     }
 

@@ -1,0 +1,56 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Tessera.App.ViewModels"
+        x:Class="Tessera.App.Views.RolesWindow"
+        x:DataType="vm:RolesViewModel"
+        Title="Manage security roles"
+        Width="820" Height="540" MinWidth="600" MinHeight="380"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource ChromeBrush}">
+  <DockPanel Margin="20,16,20,18">
+    <TextBlock DockPanel.Dock="Top" Text="Manage security roles" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <TextBlock DockPanel.Dock="Top" Classes="muted" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,12"
+               Text="A role limits each table to the rows where its DAX condition is true, such as [Region] = &quot;EMEA&quot;. Leave a table empty to keep all its rows. Try a role with Modeling › View as." />
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,12,0,0">
+      <Button x:Name="OkButton" Classes="accent" Content="Save" MinWidth="88" HorizontalContentAlignment="Center" />
+      <Button x:Name="CancelButton" Content="Cancel" MinWidth="88" HorizontalContentAlignment="Center" IsCancel="True" />
+    </StackPanel>
+    <Border DockPanel.Dock="Bottom" Padding="10,6" CornerRadius="4" Background="#FDE7E4" Margin="0,8,0,0"
+            IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Foreground="#A4262C" />
+    </Border>
+    <Grid ColumnDefinitions="220,16,*">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
+          <Button Content="New role" Command="{Binding AddRoleCommand}" />
+          <Button Content="Delete" Command="{Binding RemoveRoleCommand}" />
+        </StackPanel>
+        <ListBox ItemsSource="{Binding Roles}" SelectedItem="{Binding Selected}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:RoleViewModel">
+              <TextBlock Text="{Binding Name}" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+      <DockPanel Grid.Column="2" IsVisible="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*" Margin="0,0,0,10">
+          <TextBlock Text="Role name" VerticalAlignment="Center" Margin="0,0,10,0" />
+          <TextBox Grid.Column="1" Text="{Binding Selected.Name}" />
+        </Grid>
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Selected.Permissions}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:PermissionViewModel">
+                <Grid ColumnDefinitions="160,*" Margin="0,2">
+                  <TextBlock Text="{Binding Table}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <TextBox Grid.Column="1" Text="{Binding Expression}" FontFamily="monospace" PlaceholderText="(all rows)" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</Window>

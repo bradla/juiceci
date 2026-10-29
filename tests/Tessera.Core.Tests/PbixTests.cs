@@ -348,4 +348,35 @@ public sealed class PbixTests : IDisposable
         Assert.ThrowsAny<Exception>(() => _engine.ImportFile(path));
         Assert.Empty(_engine.Tables);
     }
+
+    [Fact]
+    public void ReportSettingsComeAcross()
+    {
+        _engine.ImportFile(Sample);
+        var settings = PbixReportImporter.Read(Sample, _engine.Tables)!.Settings!;
+        Assert.Equal("true", settings[FileSettings.CrossFilterDefault]);
+        Assert.Equal("true", settings[FileSettings.ChangeFilterTypes]);
+        Assert.Equal("true", settings[FileSettings.ModernHeader]);
+        Assert.Equal("0", settings[FileSettings.ExportData]);
+        Assert.Equal("false", settings[FileSettings.DisableCrossHighlight]);
+        Assert.Equal("0", settings[FileSettings.FilterApply]);
+        Assert.Equal("No query limits", settings[FileSettings.QueryLimit]);
+        Assert.Equal("true", settings[FileSettings.TypeDetection]);
+        Assert.Equal("true", settings[FileSettings.ImportRelationships]);
+    }
+
+    [Fact]
+    public void ThemesComeAcrossAndRoundTrip()
+    {
+        _engine.ImportFile(Sample);
+        var theme = PbixReportImporter.Read(Sample, _engine.Tables)!.Theme!;
+        Assert.NotEmpty(theme.DataColors);
+        Assert.All(theme.DataColors, c => Assert.Matches("^#[0-9A-F]{6}$", c));
+
+        var midnight = ReportTheme.BuiltIn.Single(t => t.Name == "Midnight");
+        var back = ReportTheme.FromJson(midnight.ToJson());
+        Assert.Equal(midnight.DataColors, back.DataColors);
+        Assert.Equal((midnight.Background, midnight.Foreground, midnight.PageBackground), (back.Background, back.Foreground, back.PageBackground));
+        Assert.Throws<FormatException>(() => ReportTheme.FromJson("{\"name\":\"Empty\"}"));
+    }
 }

@@ -8,7 +8,9 @@ public static class QueryBuilder
     public static string Build(VisualSpec visual, int limit = 1000) => Build(visual, new SemanticModel(), limit);
 
     /// <param name="pageFilters">Filters from the visual's page; the visual's own filters are added to them.</param>
-    public static string Build(VisualSpec visual, SemanticModel model, int limit = 1000, IEnumerable<FieldFilter>? pageFilters = null)
+    /// <param name="rowFilters">Row-level security: SQL conditions on tables, applied wherever the query reaches the table.</param>
+    public static string Build(VisualSpec visual, SemanticModel model, int limit = 1000, IEnumerable<FieldFilter>? pageFilters = null,
+        IReadOnlyList<(string Table, string Sql)>? rowFilters = null)
     {
         var fields = visual.Category.Concat(visual.Values).ToList();
         if (fields.Count == 0)
@@ -52,9 +54,14 @@ public static class QueryBuilder
         var sql = new StringBuilder("SELECT ");
         sql.Append(string.Join(", ", select));
         var filters = visual.Filters.Concat(pageFilters ?? []).Where(f => f.IsActive).ToList();
-        sql.Append(" FROM ").Append(From(model, tables, aggregated, filters, out var applied));
-        if (applied.Count > 0)
-            sql.Append(" WHERE ").Append(string.Join(" AND ", applied.Select(Condition)));
+        var security = (rowFilters ?? []).Select(r => new FieldFilter
+        {
+            Field = new FieldRef { Table = r.Table, Column = "" }, Rules = [new FilterRule(FilterOperator.IsNotBlank, r.Sql)],
+        }).ToList();
+        sql.Append(" FROM ").Append(From(model, tables, aggregated, [.. filters, .. security], out var applied));
+        var conditions = applied.Select(f => security.Contains(f) ? $"({f.Rules![0].Value})" : Condition(f)).ToList();
+        if (conditions.Count > 0)
+            sql.Append(" WHERE ").Append(string.Join(" AND ", conditions));
         if (groups.Count > 0)
             sql.Append(" GROUP BY ").Append(string.Join(", ", Enumerable.Range(1, groups.Count)));
 
@@ -241,7 +248,7 @@ public static class QueryBuilder
         var allGroups = string.Join(", ", Enumerable.Range(1, groups).Select(i => $"{sortKeys[i - 1] ?? i.ToString()} NULLS LAST"));
         return type switch
         {
-            VisualType.BarChart or VisualType.ColumnChart or VisualType.PieChart
+            VisualType.BarChart or VisualType.ColumnChart or VisualType.PieChart or VisualType.DonutChart
                 when measures > 0 && groups > 0 && !chronological && sortKeys[0] is null
                 => $"{firstMeasure} DESC NULLS LAST",
             _ when groups > 0 => allGroups,

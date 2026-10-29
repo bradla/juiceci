@@ -82,13 +82,26 @@
       <v:RibbonView />
     </Border>
 
+    <!-- Modeling › View as: Power BI's yellow bar while a role is applied -->
+    <Border DockPanel.Dock="Top" Background="#FFF4CE" BorderBrush="#E8D48A" BorderThickness="0,0,0,1" Padding="12,6"
+            IsVisible="{Binding IsViewingAs}">
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <TextBlock Text="{Binding ViewingAsText}" Foreground="#3B3A39" VerticalAlignment="Center" FontWeight="SemiBold" />
+        <Button Content="Stop viewing" Command="{Binding ViewAsCommand}" CommandParameter="{x:Null}" Padding="10,2" />
+      </StackPanel>
+    </Border>
+
     <!-- Status bar: page position and zoom, as in Power BI -->
     <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Height="28">
-      <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="12,0">
         <TextBlock Text="{Binding Report.PageIndicator}" VerticalAlignment="Center" FontSize="12" Margin="0,0,16,0"
                    IsVisible="{Binding IsReportPage}" />
-        <TextBlock Grid.Column="1" Text="{Binding Status}" VerticalAlignment="Center" FontSize="12" Classes="muted" TextTrimming="CharacterEllipsis" />
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" IsVisible="{Binding IsReportPage}">
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" Margin="0,0,16,0" IsVisible="{Binding IsReportPage}">
+          <Path Classes="icon" Data="{StaticResource Icon.Home}" Width="12" Height="12" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding Report.LandingPageText}" VerticalAlignment="Center" FontSize="12" />
+        </StackPanel>
+        <TextBlock Grid.Column="2" Text="{Binding Status}" VerticalAlignment="Center" FontSize="12" Classes="muted" TextTrimming="CharacterEllipsis" />
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" IsVisible="{Binding IsReportPage}">
           <Button Classes="flat" Padding="6,0" Command="{Binding Report.ZoomOutCommand}" ToolTip.Tip="Zoom out" Content="−" />
           <Slider Width="120" Minimum="10" Maximum="400" Value="{Binding Report.ZoomPercent}" VerticalAlignment="Center"
                   Margin="0,-14" ToolTip.Tip="Zoom" />

@@ -20,6 +20,67 @@ public sealed class EngineTests : IDisposable
         return path;
     }
 
+    [Fact]
+    public void CalculatedColumnsTablesAndRoles()
+    {
+        var orders = Assert.Single(_engine.ImportFile(WriteCsv("orders.csv", "Region,Amount\nNorth,10\nSouth,20\nNorth,5\n")));
+        _engine.AddCalculatedColumn(orders, "Doubled", "orders[Amount] * 2");
+        _engine.AddCalculatedColumn(orders, "Big", "IF([Amount] >= 10, \"Yes\", \"No\")");
+        Assert.Contains(_engine.FindTable(orders)!.Fields, f => f.Name == "Doubled" && f.Kind == FieldKind.Number);
+        var total = new VisualSpec { Type = VisualType.Card, Values = [new FieldRef { Table = orders, Column = "Doubled", Kind = FieldKind.Number, Aggregation = Aggregation.Sum }] };
+        Assert.Equal(70.0, Sql.ToDouble(_engine.Query(total).Rows[0][0]));
+        Assert.Throws<NotSupportedException>(() => _engine.AddCalculatedColumn(orders, "Bad", "SUM(orders[Amount])"));
+
+        var regions = _engine.AddCalculatedTable("Regions", "DISTINCT(orders[Region])");
+        Assert.Equal(2, _engine.FindTable(regions)!.RowCount);
+        Assert.Equal(1, _engine.FindTable(_engine.AddCalculatedTable("Big orders", "FILTER(orders, orders[Amount] > 10)"))!.RowCount);
+        Assert.Equal(366, _engine.FindTable(_engine.AddCalculatedTable("Dates", "CALENDAR(DATE(2024,1,1), DATE(2024,12,31))"))!.RowCount);
+        Assert.True(_engine.IsUnique(regions, "Region"));
+        Assert.False(_engine.IsUnique(orders, "Region"));
+
+        _engine.Model = _engine.Model.Copy(m => m.Roles = [new Role("North", [new TablePermission(orders, "[Region] = \"North\"")])]);
+        _engine.ViewAs = "North";
+        Assert.Equal(30.0, Sql.ToDouble(_engine.Query(total).Rows[0][0]));
+        _engine.ViewAs = null;
+        Assert.Equal(70.0, Sql.ToDouble(_engine.Query(total).Rows[0][0]));
+
+        // Refreshing the source works the calculated column out again.
+        File.WriteAllText(Path.Combine(_dir.FullName, "orders.csv"), "Region,Amount\nNorth,1\n");
+        _engine.RefreshSources();
+        Assert.Equal(2.0, Sql.ToDouble(_engine.Query(total).Rows[0][0]));
+    }
+
+    [Fact]
+    public void EnteredDataBecomesATable()
+    {
+        var name = _engine.ImportText("Targets", "Region\tTarget\nNorth\t1200\nSouth\t950\n");
+        var table = _engine.FindTable(name)!;
+        Assert.Equal(2, table.RowCount);
+        Assert.Equal(FieldKind.Number, table.Fields.Single(f => f.Name == "Target").Kind);
+        var commas = _engine.ImportText("Plans", "Year,Plan\n2025,10\n");
+        Assert.Equal(["Plan", "Year"], _engine.FindTable(commas)!.Fields.Select(f => f.Name).Order());
+        Assert.Throws<FormatException>(() => _engine.ImportText("Empty", "  \n"));
+    }
+
+    [Fact]
+    public void RefreshReadsSourcesAgainAndSurvivesASave()
+    {
+        var path = WriteCsv("orders.csv", "Region,Amount\nNorth,10\n");
+        var table = Assert.Single(_engine.ImportFile(path));
+        File.WriteAllText(path, "Region,Amount\nNorth,10\nSouth,20\nEast,5\n");
+        Assert.Equal([table], _engine.RefreshSources());
+        Assert.Equal(3, _engine.FindTable(table)!.RowCount);
+
+        var saved = Path.Combine(_dir.FullName, "p.tsr");
+        ProjectFile.Save(saved, _engine, new ReportDocument());
+        using var reopened = new DataEngine();
+        ProjectFile.Load(saved, reopened);
+        Assert.Equal(Path.GetFullPath(path), reopened.Sources[table]);
+        File.WriteAllText(path, "Region,Amount\nNorth,10\n");
+        Assert.Equal([table], reopened.RefreshSources());
+        Assert.Equal(1, reopened.FindTable(table)!.RowCount);
+    }
+
     static FieldRef Field(TableInfo t, string column, Aggregation agg = Aggregation.None) =>
         new(t.Fields.Single(f => f.Name == column), agg);
 
@@ -48,6 +109,10 @@ public sealed class EngineTests : IDisposable
     {
         _engine.SetResourceLimits(2, 512);
         _engine.SetResourceLimits(null, null);
+        var cache = Directory.CreateTempSubdirectory("juiceci-cache-");
+        _engine.SetTempDirectory(cache.FullName, 4096);
+        _engine.SetTempDirectory(cache.FullName);
+        cache.Delete(recursive: true);
     }
 
     [Fact]

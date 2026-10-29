@@ -96,7 +96,7 @@
                 <TextBlock Text="Parquet file" FontWeight="SemiBold" HorizontalAlignment="Center" />
               </StackPanel>
             </Button>
-            <Button Classes="card" Command="{Binding GetDataCommand}" CommandParameter="powerbi">
+            <Button Classes="card" Command="{Binding OpenPowerBiFileCommand}" ToolTip.Tip="Open a Power BI Desktop report: its pages, visuals and data">
               <StackPanel Spacing="10">
                 <Path Classes="icon" Data="{StaticResource Icon.ReportView}" />
                 <TextBlock Text="Power BI file" FontWeight="SemiBold" HorizontalAlignment="Center" />

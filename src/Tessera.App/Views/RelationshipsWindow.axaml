@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Tessera.App.ViewModels"
+        x:Class="Tessera.App.Views.RelationshipsWindow"
+        x:DataType="vm:RelationshipsViewModel"
+        Title="Manage relationships"
+        Width="760" Height="520" MinWidth="560" MinHeight="380"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource ChromeBrush}">
+  <DockPanel Margin="20,16,20,18">
+    <TextBlock DockPanel.Dock="Top" Text="Manage relationships" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,12,0,0">
+      <Button x:Name="OkButton" Classes="accent" Content="Save" MinWidth="88" HorizontalContentAlignment="Center" />
+      <Button x:Name="CancelButton" Content="Cancel" MinWidth="88" HorizontalContentAlignment="Center" IsCancel="True" />
+    </StackPanel>
+    <Border DockPanel.Dock="Bottom" Padding="10,6" CornerRadius="4" Background="#FDE7E4" Margin="0,8,0,0"
+            IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <TextBlock Text="{Binding Error}" TextWrapping="Wrap" Foreground="#A4262C" />
+    </Border>
+    <!-- New relationship: many rows of From match one row of To -->
+    <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="0,12,0,0">
+      <TextBlock Text="New relationship" FontWeight="SemiBold" />
+      <TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+                 Text="Each row of the From table matches one row of the To table, whose column must have no repeated values." />
+      <Grid ColumnDefinitions="*,*,Auto,*,*,Auto" ColumnSpacing="6">
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Tables}" SelectedItem="{Binding FromTable}" PlaceholderText="From table" />
+        <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding FromColumns}" SelectedItem="{Binding FromColumn}" />
+        <TextBlock Grid.Column="2" Text="→" VerticalAlignment="Center" Margin="4,0" />
+        <ComboBox Grid.Column="3" HorizontalAlignment="Stretch" ItemsSource="{Binding Tables}" SelectedItem="{Binding ToTable}" PlaceholderText="To table" />
+        <ComboBox Grid.Column="4" HorizontalAlignment="Stretch" ItemsSource="{Binding ToColumns}" SelectedItem="{Binding ToColumn}" />
+        <Button Grid.Column="5" Content="Add" Command="{Binding AddCommand}" />
+      </Grid>
+    </StackPanel>
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="60,*,*,Auto" Margin="8,0,8,4">
+      <TextBlock Text="Active" FontWeight="SemiBold" FontSize="12" />
+      <TextBlock Grid.Column="1" Text="From: table (column)" FontWeight="SemiBold" FontSize="12" />
+      <TextBlock Grid.Column="2" Text="To: table (column)" FontWeight="SemiBold" FontSize="12" />
+    </Grid>
+    <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="4">
+      <Panel>
+        <TextBlock Classes="muted" Margin="12" Text="No relationships yet. Add one below." IsVisible="{Binding !Rows.Count}" />
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:RelationshipRowViewModel">
+                <Grid ColumnDefinitions="60,*,*,Auto" Margin="8,2">
+                  <CheckBox IsChecked="{Binding IsActive}" ToolTip.Tip="Only active relationships filter across tables" />
+                  <TextBlock Grid.Column="1" Text="{Binding From}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" Text="{Binding To}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <Button Grid.Column="3" Classes="flat" Command="{Binding RemoveCommand}" ToolTip.Tip="Delete relationship">
+                    <Path Classes="icon" Data="{StaticResource Icon.Trash}" Width="14" Height="14" />
+                  </Button>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Panel>
+    </Border>
+  </DockPanel>
+</Window>

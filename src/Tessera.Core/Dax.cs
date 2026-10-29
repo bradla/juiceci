@@ -40,6 +40,64 @@ public sealed class DaxTranslator
         return new CompiledMeasure(sql, t._aggregated, t._tables);
     }
 
+    static Node Parse(string expression)
+    {
+        try
+        {
+            return new Parser(expression).ParseAll();
+        }
+        catch (FormatException e)
+        {
+            throw new NotSupportedException($"Can't read the DAX: {e.Message}", e);
+        }
+    }
+
+    /// <summary>
+    /// A calculated column or row-level security condition: an expression evaluated for each row of
+    /// <paramref name="table"/>, as SQL over that table's columns.
+    /// </summary>
+    public static string TranslateRow(string expression, string table, SemanticModel model)
+    {
+        var t = new DaxTranslator(model);
+        var sql = t.Emit(Parse(expression), new Scope(table, null, []));
+        if (t._aggregated.Count > 0)
+            throw new NotSupportedException("Aggregations such as SUM aren't supported in a row expression yet; use a measure.");
+        if (t._tables.FirstOrDefault(x => !string.Equals(x, table, StringComparison.OrdinalIgnoreCase)) is { } other)
+            throw new NotSupportedException($"A row expression on {table} can only use its own columns, not {other}'s.");
+        return sql;
+    }
+
+    /// <summary>
+    /// A calculated table as a SQL query: a table, FILTER(table, condition), DISTINCT or VALUES of a
+    /// column, or CALENDAR(start, end).
+    /// </summary>
+    public static string TranslateTable(string expression, SemanticModel model)
+    {
+        var t = new DaxTranslator(model);
+        var tree = Parse(expression);
+        var none = new Scope(null, null, []);
+        switch (tree)
+        {
+            case Call c when c.Function.ToUpperInvariant() is "DISTINCT" or "VALUES":
+            {
+                if (c.Args is not [ColumnRef { Table: { } table } col])
+                    throw new NotSupportedException($"{c.Function} needs one column, such as {c.Function}(Sales[Region]).");
+                return $"SELECT DISTINCT {Sql.Ident(col.Name)} FROM {Sql.Ident(table)} ORDER BY 1";
+            }
+            case Call c when c.Function.Equals("CALENDAR", StringComparison.OrdinalIgnoreCase):
+            {
+                Arity(c, 2);
+                var (start, end) = (t.Emit(c.Args[0], none), t.Emit(c.Args[1], none));
+                return $"SELECT CAST(d AS DATE) AS \"Date\" FROM range(CAST({start} AS DATE), CAST({end} AS DATE) + INTERVAL 1 DAY, INTERVAL 1 DAY) AS r(d)";
+            }
+            default:
+            {
+                var (table, condition) = t.TableExpression(tree, none);
+                return $"SELECT * FROM {Sql.Ident(table)}" + (condition is null ? "" : $" WHERE {condition}");
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ Syntax tree
 
     abstract record Node;
@@ -261,6 +319,7 @@ public sealed class DaxTranslator
             case "LEN": Arity(c, 1); return $"length(CAST({Emit(a[0], s)} AS VARCHAR))";
             case "UPPER": Arity(c, 1); return $"upper({Emit(a[0], s)})";
             case "LOWER": Arity(c, 1); return $"lower({Emit(a[0], s)})";
+            case "DATE": Arity(c, 3); return $"make_date(CAST({Emit(a[0], s)} AS INTEGER), CAST({Emit(a[1], s)} AS INTEGER), CAST({Emit(a[2], s)} AS INTEGER))";
             case "YEAR": Arity(c, 1); return $"year({Emit(a[0], s)})";
             case "MONTH": Arity(c, 1); return $"month({Emit(a[0], s)})";
             case "DAY": Arity(c, 1); return $"day({Emit(a[0], s)})";

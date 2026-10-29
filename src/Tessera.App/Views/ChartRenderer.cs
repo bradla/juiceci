@@ -14,20 +14,33 @@ public static class ChartRenderer
         new[] { "#0E7C66", "#E0A526", "#3B6FB6", "#D2553F", "#7A5BA6", "#4FA3A5", "#B5651D", "#8C8C3A", "#C2577F", "#5E7D2E", "#6E7F99", "#A0522D" }
             .Select(SP.Color.FromHex).ToArray();
 
-    static readonly SP.Color Ink = SP.Color.FromHex("#55554F");
-    static readonly SP.Color GridLine = SP.Color.FromHex("#EDEDE9");
+    // The theme's text and background for the chart being built; charts are built one at a time on the UI thread.
+    static SP.Color Ink = SP.Color.FromHex("#55554F");
+    static SP.Color GridLine = SP.Color.FromHex("#EDEDE9");
+    static SP.Color Paper = SP.Colors.White;
+    static IBrush Text = new SolidColorBrush(Color.Parse("#252423"));
 
     /// <param name="style">Imported formatting; its accent colours the first series.</param>
-    public static Control Build(VisualType type, QueryResult r, VisualStyle? style = null)
+    /// <param name="theme">The report theme: series colours, text and the visual's background.</param>
+    public static Control Build(VisualType type, QueryResult r, VisualStyle? style = null, ReportTheme? theme = null)
     {
+        var background = style?.Background ?? theme?.Background ?? "#FFFFFF";
+        Paper = SP.Color.FromHex(background);
+        var fore = SP.Color.FromHex(theme?.Foreground ?? "#252423");
+        Ink = fore.WithAlpha(0.8);
+        GridLine = fore.WithAlpha(0.1);
+        Text = new SolidColorBrush(Color.Parse(theme?.Foreground ?? "#252423"));
         if (r.Rows.Count == 0) return Message("No data");
-        var palette = style?.Accent is { } accent ? [SP.Color.FromHex(accent), .. Palette] : Palette;
+        var themed = theme?.DataColors is { Count: > 0 } colors ? colors.Select(SP.Color.FromHex).ToArray() : Palette;
+        var palette = style?.Accent is { } accent ? [SP.Color.FromHex(accent), .. themed] : themed;
         return type switch
         {
             VisualType.Table => GridBuilder.Create(r),
             VisualType.Card => Card(r),
-            VisualType.PieChart => Pie(r, palette),
-            VisualType.LineChart => Line(r, palette),
+            VisualType.PieChart => Pie(r, palette, donut: false),
+            VisualType.DonutChart => Pie(r, palette, donut: true),
+            VisualType.LineChart => Line(r, palette, area: false),
+            VisualType.AreaChart => Line(r, palette, area: true),
             VisualType.BarChart => Bars(r, palette, horizontal: true, style?.HideValueAxis == true),
             _ => Bars(r, palette, horizontal: false, style?.HideValueAxis == true),
         };
@@ -51,6 +64,7 @@ public static class ChartRenderer
         var big = new TextBlock
         {
             Text = text,
+            Foreground = Text,
             FontWeight = FontWeight.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -77,8 +91,8 @@ public static class ChartRenderer
         var ap = new AvaPlot();
         ap.UserInputProcessor.Disable();
         var plt = ap.Plot;
-        plt.FigureBackground.Color = SP.Colors.White;
-        plt.DataBackground.Color = SP.Colors.White;
+        plt.FigureBackground.Color = Paper;
+        plt.DataBackground.Color = Paper;
         plt.Axes.Color(Ink);
         plt.Grid.MajorLineColor = GridLine;
         plt.Axes.Top.FrameLineStyle.Width = 0;
@@ -94,6 +108,8 @@ public static class ChartRenderer
         foreach (var (label, color) in items)
             plt.Legend.ManualItems.Add(new SP.LegendItem { LabelText = label, FillColor = color });
         plt.Legend.FontSize = 11;
+        plt.Legend.FontColor = Ink;
+        plt.Legend.BackgroundColor = Paper;
         plt.ShowLegend(SP.Alignment.UpperRight);
     }
 
@@ -171,7 +187,7 @@ public static class ChartRenderer
         return ap;
     }
 
-    static Control Line(QueryResult r, SP.Color[] palette)
+    static Control Line(QueryResult r, SP.Color[] palette, bool area)
     {
         var ap = NewPlot();
         var plt = ap.Plot;
@@ -203,6 +219,12 @@ public static class ChartRenderer
             var line = plt.Add.Scatter(pts.Select(p => p.X).ToArray(), pts.Select(p => p.Y!.Value).ToArray());
             line.Color = palette[s % palette.Length];
             line.LineWidth = 2;
+            if (area)
+            {
+                // Power BI's area chart: the line with a light fill down to zero.
+                line.FillY = true;
+                line.FillYColor = line.Color.WithAlpha(0.25);
+            }
             line.MarkerSize = n <= 40 ? 5 : 0;
         }
 
@@ -213,7 +235,7 @@ public static class ChartRenderer
         return ap;
     }
 
-    static Control Pie(QueryResult r, SP.Color[] palette)
+    static Control Pie(QueryResult r, SP.Color[] palette, bool donut)
     {
         var labels = Labels(r);
         var slices = r.Rows
@@ -225,7 +247,7 @@ public static class ChartRenderer
         var ap = NewPlot();
         var plt = ap.Plot;
         var pie = plt.Add.Pie(slices.Select(s => s.Value).ToArray());
-        pie.DonutFraction = 0.5;
+        pie.DonutFraction = donut ? 0.5 : 0;
         pie.LineWidth = 1.5f;
         pie.LineColor = SP.Colors.White;
         for (var i = 0; i < slices.Count; i++)
@@ -236,6 +258,8 @@ public static class ChartRenderer
         plt.Axes.Frameless();
         plt.HideGrid();
         plt.Legend.FontSize = 11;
+        plt.Legend.FontColor = Ink;
+        plt.Legend.BackgroundColor = Paper;
         plt.ShowLegend(SP.Edge.Right);
         ap.Refresh();
         return ap;

@@ -121,6 +121,42 @@
     <Setter Property="Height" Value="14" />
   </Style>
 
+  <!-- View tab panes beside the Filters pane. -->
+  <Style Selector="Border.viewPane">
+    <Setter Property="Width" Value="240" />
+    <Setter Property="Background" Value="{DynamicResource PaneBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="1,0,0,0" />
+  </Style>
+  <Style Selector="Button.layer.current">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+  </Style>
+  <!-- View ribbon: toggles that stay pressed while their pane or option is on. -->
+  <Style Selector="ToggleButton.ribbon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Padding" Value="6,4" />
+    <Setter Property="MinWidth" Value="52" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ToggleButton.ribbon:checked /template/ ContentPresenter, ToggleButton.ribbon:checked:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+  </Style>
+  <Style Selector="ToggleButton.ribbon TextBlock">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="TextAlignment" Value="Center" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ToggleButton.ribbon Path.icon">
+    <Setter Property="Width" Value="26" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+
   <!-- Options dialog. -->
   <Style Selector="TextBlock.optionsGroup">
     <Setter Property="FontSize" Value="12" />
@@ -139,10 +175,21 @@
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     <Setter Property="BorderThickness" Value="3,0,0,0" />
   </Style>
-  <Style Selector="StackPanel.optionsBody > TextBlock.h">
+  <Style Selector="StackPanel.optionsBody TextBlock.h">
     <Setter Property="FontSize" Value="17" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Margin" Value="0,14,0,4" />
+  </Style>
+  <Style Selector="Button.link">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0,2" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.link:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
   </Style>
   <Style Selector="Path.info">
     <Setter Property="Width" Value="13" />
@@ -150,6 +197,41 @@
     <Setter Property="Margin" Value="8,0,0,0" />
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Stroke" Value="{DynamicResource MutedTextBrush}" />
+  </Style>
+
+  <!-- Design tab: theme tiles -->
+  <Style Selector="Button.themeTile">
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <!-- Visualizations gallery: Power BI's small square buttons, six to a row. -->
+  <Style Selector="Button.vgallery">
+    <Setter Property="Width" Value="39" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="0,0,2,2" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.vgallery Path.icon">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
+  </Style>
+  <Style Selector="Button.vgallery:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.vgallery:disabled Path.icon, Button.vgallery:disabled TextBlock">
+    <Setter Property="Opacity" Value="0.35" />
+  </Style>
+  <Style Selector="Button.vgallery TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
   </Style>
 
   <!-- Visual-type picker buttons. -->
@@ -330,8 +412,24 @@
     <Setter Property="Padding" Value="8,6" />
     <Setter Property="Margin" Value="0,0,0,6" />
   </Style>
+  <!-- Power BI's cards: a filter that keeps something turns grey and bold; the buttons show on hover. -->
   <Style Selector="Border.filterCard.active">
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource HoverBrush}" />
+  </Style>
+  <Style Selector="Border.filterCard TextBlock.cardName">
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="Border.filterCard TextBlock.cardSummary">
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="Border.filterCard.active TextBlock.cardName, Border.filterCard.active TextBlock.cardSummary">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.filterCard :is(Button).cardAction">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="Border.filterCard:pointerover :is(Button).cardAction, Border.filterCard :is(Button).cardAction:checked">
+    <Setter Property="Opacity" Value="1" />
   </Style>
 
   <!-- Ribbon: tab strip and large command buttons in labelled groups. -->
@@ -376,12 +474,31 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Padding" Value="4,2" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Height" Value="22" />
   </Style>
   <Style Selector="Button.ribbonSmall:disabled /template/ ContentPresenter">
     <Setter Property="Background" Value="Transparent" />
   </Style>
   <Style Selector="Button.ribbonSmall:disabled Path.icon">
     <Setter Property="Opacity" Value="0.35" />
+  </Style>
+  <Style Selector="ToggleButton.ribbonSmall">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="4,2" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Height" Value="22" />
+  </Style>
+  <Style Selector="ToggleButton.ribbonSmall:checked /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+  </Style>
+  <Style Selector="ToggleButton.ribbonSmall Path.icon">
+    <Setter Property="Width" Value="15" />
+    <Setter Property="Height" Value="15" />
+  </Style>
+  <Style Selector="Button.ribbon:disabled TextBlock">
+    <Setter Property="Opacity" Value="0.45" />
   </Style>
   <Style Selector="Button.ribbonSmall Path.icon">
     <Setter Property="Width" Value="15" />

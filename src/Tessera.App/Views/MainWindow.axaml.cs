@@ -17,6 +17,7 @@ public partial class MainWindow : Window, IDialogs
     public MainWindow()
     {
         InitializeComponent();
+        OptionsCatalog.OpenFolder = folder => _ = Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(folder));
         DragDrop.SetAllowDrop(this, true);
         AddHandler(DragDrop.DragOverEvent, OnFileDragOver);
         AddHandler(DragDrop.DropEvent, OnFileDrop);
@@ -137,13 +138,13 @@ public partial class MainWindow : Window, IDialogs
             "text" => new("Text / CSV") { Patterns = ["*.csv", "*.tsv", "*.txt"] },
             "parquet" => new("Parquet") { Patterns = ["*.parquet"] },
             "json" => new("JSON") { Patterns = ["*.json"] },
-            "powerbi" => new("Power BI file") { Patterns = ["*.pbix"] },
+            "powerbi" => new("Power BI file") { Patterns = ["*.pbix", "*.PBIX"] },
             _ => new("All supported data") { Patterns = DataEngine.SupportedExtensions.Select(x => "*" + x).ToList() },
         };
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Get data",
-            AllowMultiple = true,
+            Title = kind == "powerbi" ? "Open Power BI file" : "Get data",
+            AllowMultiple = kind != "powerbi",
             FileTypeFilter = [type],
         });
         return files.Select(f => f.TryGetLocalPath()).OfType<string>().ToList();
@@ -159,11 +160,13 @@ public partial class MainWindow : Window, IDialogs
         return files.FirstOrDefault()?.TryGetLocalPath();
     }
 
-    public async Task<string?> PickSavePathAsync(string suggestedName)
+    public async Task<string?> PickSavePathAsync(string suggestedName, string? folder = null)
     {
+        var start = folder is not null && Directory.Exists(folder) ? await StorageProvider.TryGetFolderFromPathAsync(new Uri(Path.GetFullPath(folder))) : null;
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Save report",
+            SuggestedStartLocation = start,
             SuggestedFileName = suggestedName,
             DefaultExtension = ProjectFile.Extension.TrimStart('.'),
             FileTypeChoices = [ProjectType],
@@ -188,6 +191,43 @@ public partial class MainWindow : Window, IDialogs
 
     public async Task<bool> ShowMeasureAsync(MeasureViewModel measure) =>
         await new MeasureWindow { DataContext = measure }.ShowDialog<bool?>(this) == true;
+
+    public async Task<bool> ShowEnterDataAsync(EnterDataViewModel data) =>
+        await new EnterDataWindow { DataContext = data }.ShowDialog<bool?>(this) == true;
+
+    public async Task<bool> ShowRelationshipsAsync(RelationshipsViewModel relationships) =>
+        await new RelationshipsWindow { DataContext = relationships }.ShowDialog<bool?>(this) == true;
+
+    public async Task<bool> ShowCalculationAsync(CalculationViewModel calculation) =>
+        await new CalculationWindow { DataContext = calculation }.ShowDialog<bool?>(this) == true;
+
+    public async Task<bool> ShowRolesAsync(RolesViewModel roles) =>
+        await new RolesWindow { DataContext = roles }.ShowDialog<bool?>(this) == true;
+
+    public async Task<bool> ShowCustomizeThemeAsync(CustomizeThemeViewModel theme) =>
+        await new CustomizeThemeWindow { DataContext = theme }.ShowDialog<bool?>(this) == true;
+
+    static readonly FilePickerFileType ThemeType = new("Power BI theme") { Patterns = ["*.json"] };
+
+    public async Task<string?> PickThemeFileAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import theme", AllowMultiple = false, FileTypeFilter = [ThemeType],
+        });
+        return files.FirstOrDefault()?.TryGetLocalPath();
+    }
+
+    public async Task<string?> PickThemeSavePathAsync(string suggestedName)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Download theme", SuggestedFileName = suggestedName, DefaultExtension = "json", FileTypeChoices = [ThemeType],
+        });
+        return file?.TryGetLocalPath();
+    }
+
+    public void OpenUrl(string url) => _ = Launcher.LaunchUriAsync(new Uri(url));
 
     public async Task<string?> PickImageAsync()
     {

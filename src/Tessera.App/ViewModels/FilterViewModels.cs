@@ -6,7 +6,10 @@ using Tessera.Core;
 namespace Tessera.App.ViewModels;
 
 /// <summary>Where a filter applies, and the drop target for adding one.</summary>
-public enum FilterScope { Visual, Page }
+public enum FilterScope { Visual, Page, Report }
+
+/// <summary>Page-level wells in the Build pane.</summary>
+public enum PageWell { DrillThrough }
 
 public sealed partial class FilterValueViewModel(string? value, bool isChecked, Action changed) : ObservableObject
 {
@@ -51,6 +54,13 @@ public sealed partial class FilterCardViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
+
+    /// <summary>The field isn't in the model any more; Power BI marks such cards with a warning.</summary>
+    public bool IsBroken { get; init; }
+
+    /// <summary>False when the Filters pane's search hides this card.</summary>
+    [ObservableProperty]
+    public partial bool IsMatch { get; set; } = true;
 
     /// <summary>Power BI's "Select all": ticked when nothing is filtered out.</summary>
     public bool SelectAll

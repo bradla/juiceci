@@ -13,6 +13,17 @@ public enum PageZoom { FitPage, FitWidth, Custom }
 
 public sealed record VisualTypeOption(VisualType Type, string Label, string IconKey);
 
+/// <summary>
+/// A button in the Visualizations pane's gallery of Power BI visual types. <see cref="Type"/> is null for the
+/// ones JuiceCI can't draw yet; they show greyed out so the gallery reads like Power BI's.
+/// </summary>
+public sealed record GalleryItem(string Label, string IconKey, VisualType? Type, string? Glyph = null)
+{
+    public bool IsAvailable => Type is not null;
+    public bool HasGlyph => Glyph is not null;
+    public string Tip => IsAvailable ? Label : $"{Label}: not available in JuiceCI yet";
+}
+
 /// <summary>A tab in the page bar under the canvas.</summary>
 public partial class PageTabViewModel(ReportPage page) : ObservableObject
 {
@@ -22,6 +33,10 @@ public partial class PageTabViewModel(ReportPage page) : ObservableObject
 
     [ObservableProperty]
     public partial bool IsCurrent { get; set; }
+
+    /// <summary>The page the report opens on; its tab shows a house.</summary>
+    [ObservableProperty]
+    public partial bool IsLanding { get; set; }
 
     internal void Renamed() => OnPropertyChanged(nameof(Name));
 }
@@ -39,6 +54,12 @@ public partial class ReportViewModel : ObservableObject
         _engine = engine;
         _page = _doc.Pages[0];
         Pages.Add(new PageTabViewModel(_page) { IsCurrent = true });
+        Visuals.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(Layers));
+            OnPropertyChanged(nameof(OffMobileVisuals));
+            if (IsMobileLayout) OnPropertyChanged(nameof(PageHeight));
+        };
         History.Reset(Snapshot());
     }
 
@@ -52,12 +73,106 @@ public partial class ReportViewModel : ObservableObject
         new(VisualType.ColumnChart, "Column chart", "Visual.ColumnChart"),
         new(VisualType.BarChart, "Bar chart", "Visual.BarChart"),
         new(VisualType.LineChart, "Line chart", "Visual.LineChart"),
+        new(VisualType.AreaChart, "Area chart", "Visual.AreaChart"),
         new(VisualType.PieChart, "Pie chart", "Visual.PieChart"),
+        new(VisualType.DonutChart, "Donut chart", "Visual.Donut"),
         new(VisualType.Table, "Table", "Visual.Table"),
         new(VisualType.Card, "Card", "Visual.Card"),
         new(VisualType.DecompositionTree, "Decomposition tree", "Visual.DecompositionTree"),
         new(VisualType.KeyInfluencers, "Key influencers", "Visual.KeyInfluencers"),
     ];
+
+    /// <summary>Power BI's Visualizations gallery, in its order.</summary>
+    public static IReadOnlyList<GalleryItem> FullGallery { get; } =
+    [
+        new("Stacked bar chart", "Visual.StackedBar", null), new("Stacked column chart", "Visual.StackedColumn", null),
+        new("Clustered bar chart", "Visual.BarChart", VisualType.BarChart), new("Clustered column chart", "Visual.ColumnChart", VisualType.ColumnChart),
+        new("100% stacked bar chart", "Visual.FullBar", null), new("100% stacked column chart", "Visual.FullColumn", null),
+        new("Line chart", "Visual.LineChart", VisualType.LineChart), new("Area chart", "Visual.AreaChart", VisualType.AreaChart),
+        new("Stacked area chart", "Visual.StackedArea", null), new("100% stacked area chart", "Visual.FullArea", null),
+        new("Line and stacked column chart", "Visual.LineStackedColumn", null),
+        new("Line and clustered column chart", "Visual.LineClusteredColumn", null),
+        new("Ribbon chart", "Visual.Ribbon", null), new("Waterfall chart", "Visual.Waterfall", null), new("Funnel", "Visual.Funnel", null),
+        new("Scatter chart", "Visual.Scatter", null), new("Pie chart", "Visual.PieChart", VisualType.PieChart),
+        new("Donut chart", "Visual.Donut", VisualType.DonutChart),
+        new("Treemap", "Visual.Treemap", null), new("Map", "Visual.Map", null), new("Filled map", "Visual.FilledMap", null),
+        new("Shape map", "Visual.ShapeMap", null), new("Azure map", "Visual.AzureMap", null), new("Gauge", "Visual.Gauge", null),
+        new("Card", "Visual.Card", VisualType.Card), new("KPI", "Visual.Kpi", null), new("Slicer", "Visual.Slicer", null),
+        new("Table", "Visual.Table", VisualType.Table), new("Matrix", "Visual.Matrix", null),
+        new("R script visual", "", null, "R"), new("Python visual", "", null, "Py"),
+        new("Key influencers", "Visual.KeyInfluencers", VisualType.KeyInfluencers),
+        new("Decomposition tree", "Visual.DecompositionTree", VisualType.DecompositionTree),
+        new("Q&A", "Visual.QnA", null), new("Narrative", "Visual.Narrative", null), new("Metrics", "Visual.Metrics", null),
+        new("Paginated report", "Visual.Paginated", null), new("Power Apps for Power BI", "Visual.PowerApps", null),
+        new("Power Automate for Power BI", "Visual.PowerAutomate", null), new("Get more visuals", "", null, "···"),
+    ];
+
+    /// <summary>The gallery less any preview feature turned off.</summary>
+    public ObservableCollection<GalleryItem> Gallery { get; } = new(FullGallery);
+
+    /// <summary>The visual types offered for new visuals: <see cref="VisualTypes"/> less any preview feature turned off.</summary>
+    public ObservableCollection<VisualTypeOption> AvailableVisualTypes { get; } = new(VisualTypes);
+
+    /// <summary>Insert › AI visuals follow the Preview features page too.</summary>
+    public bool HasKeyInfluencers => AvailableVisualTypes.Any(t => t.Type == VisualType.KeyInfluencers);
+    public bool HasDecompositionTree => AvailableVisualTypes.Any(t => t.Type == VisualType.DecompositionTree);
+
+    /// <summary>Applies the Preview features page.</summary>
+    public void SetPreviewVisuals(bool decompositionTree, bool keyInfluencers)
+    {
+        var wanted = VisualTypes.Where(t => t.Type switch
+        {
+            VisualType.DecompositionTree => decompositionTree,
+            VisualType.KeyInfluencers => keyInfluencers,
+            _ => true,
+        }).ToList();
+        if (wanted.SequenceEqual(AvailableVisualTypes)) return;
+        AvailableVisualTypes.Clear();
+        foreach (var t in wanted) AvailableVisualTypes.Add(t);
+        OnPropertyChanged(nameof(HasKeyInfluencers));
+        OnPropertyChanged(nameof(HasDecompositionTree));
+        Gallery.Clear();
+        foreach (var g in FullGallery.Where(g => g.Type is null || wanted.Any(t => t.Type == g.Type))) Gallery.Add(g);
+    }
+
+    /// <summary>Table view's data preview shows spaces as · and line breaks as ↵ (Power Query Editor options).</summary>
+    [ObservableProperty]
+    public partial bool ShowWhitespace { get; set; }
+
+    [ObservableProperty]
+    public partial bool MonospacedPreview { get; set; }
+
+    /// <summary>The Options dialog's Current file choices, saved with the report.</summary>
+    public IReadOnlyDictionary<string, string>? FileSettings => _doc.Settings;
+
+    /// <summary>Replaces the Current file choices; undoable like any other edit.</summary>
+    public void SetFileSettings(IReadOnlyDictionary<string, string> values)
+    {
+        var current = _doc.Settings ?? [];
+        if (current.Count == values.Count && values.All(kv => current.TryGetValue(kv.Key, out var v) && v == kv.Value)) return;
+        _doc.Settings = values.Count == 0 ? null : new Dictionary<string, string>(values);
+        OnFileSettingsChanged();
+        RaiseChanged();
+    }
+
+    void OnFileSettingsChanged()
+    {
+        OnPropertyChanged(nameof(FileSettings));
+        OnPropertyChanged(nameof(IsFilterSearchEnabled));
+        OnPropertyChanged(nameof(CrossReportDrillthrough));
+        OnPropertyChanged(nameof(HideFilterPaneForReaders));
+        if (!IsFilterSearchEnabled) FilterSearch = "";
+    }
+
+    /// <summary>Report settings › Display smart guides when visuals are aligned.</summary>
+    public bool SmartGuides { get; set; } = true;
+
+    /// <summary>Report settings › Page alignment: top of the wallpaper, or its centre.</summary>
+    [ObservableProperty]
+    public partial bool AlignPageTop { get; set; } = true;
+
+    /// <summary>Report settings › Copy object names when right clicking on report objects.</summary>
+    public bool CopyObjectNames { get; set; }
 
     /// <summary>Snap step for placing, moving and resizing visuals; 0 or 1 turns snapping off.</summary>
     public int GridSize { get; set; } = 8;
@@ -65,10 +180,10 @@ public partial class ReportViewModel : ObservableObject
     /// <summary>How date fields dropped on an axis are grouped at first.</summary>
     public DateGrain DefaultDateGrain { get; set; } = DateGrain.Month;
 
-    public double PageWidth => _page.Width;
-    public double PageHeight => _page.Height;
+    public double PageWidth => IsMobileLayout ? MobileWidth : _page.Width;
+    public double PageHeight => IsMobileLayout ? MobileHeight : _page.Height;
     public string PageName => _page.Name;
-    public string PageBackground => _page.Background ?? "#FFFFFF";
+    public string PageBackground => _page.Background ?? Theme.PageBackground ?? "#FFFFFF";
 
     /// <summary>Format pane with nothing selected: the page's colour.</summary>
     [RelayCommand]
@@ -108,9 +223,9 @@ public partial class ReportViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowFiltersPane { get; set; } = true;
 
-    /// <summary>The Filters pane starts as a narrow strip, like Power BI's.</summary>
+    /// <summary>Expanded or collapsed to a narrow strip; it starts expanded, as in Power BI Desktop.</summary>
     [ObservableProperty]
-    public partial bool IsFiltersExpanded { get; set; }
+    public partial bool IsFiltersExpanded { get; set; } = true;
 
     [ObservableProperty]
     public partial bool ShowVisualizationsPane { get; set; } = true;
@@ -266,6 +381,7 @@ public partial class ReportViewModel : ObservableObject
     {
         if (oldValue is not null) oldValue.IsSelected = false;
         if (newValue is not null) newValue.IsSelected = true;
+        if (newValue is not null && newValue != oldValue) PaintFormat(newValue);
         SyncFieldChecks();
         RebuildVisualFilters();
         PasteCommand.NotifyCanExecuteChanged();
@@ -275,20 +391,40 @@ public partial class ReportViewModel : ObservableObject
 
     public ObservableCollection<FilterCardViewModel> VisualFilters { get; } = [];
     public ObservableCollection<FilterCardViewModel> PageFilters { get; } = [];
-    public int ActiveFilterCount => PageFilters.Count(f => f.Filter.IsActive) + VisualFilters.Count(f => f.Filter.IsActive);
+    /// <summary>Filters on all pages.</summary>
+    public ObservableCollection<FilterCardViewModel> ReportFilters { get; } = [];
+
+    public int ActiveFilterCount => ReportFilters.Concat(PageFilters).Concat(VisualFilters).Count(f => f.Filter.IsActive);
+
+    /// <summary>Report settings › "Enable search for the filter pane".</summary>
+    public bool IsFilterSearchEnabled => OptionsCatalog.Flag(_doc.Settings, Core.FileSettings.FilterPaneSearch);
+
+    [ObservableProperty]
+    public partial string FilterSearch { get; set; } = "";
+
+    partial void OnFilterSearchChanged(string value) => ApplyFilterSearch();
+
+    void ApplyFilterSearch()
+    {
+        var q = FilterSearch.Trim();
+        foreach (var card in VisualFilters.Concat(PageFilters).Concat(ReportFilters))
+            card.IsMatch = q.Length == 0 || card.Name.Contains(q, StringComparison.CurrentCultureIgnoreCase);
+    }
 
     FilterCardViewModel Card(FieldFilter filter, FilterScope scope)
     {
         IReadOnlyList<string?> values;
+        var broken = false;
         try
         {
             values = _engine.DistinctValues(filter.Field.Table, filter.Field.Column);
         }
         catch (Exception)
         {
-            values = [];   // the table is gone; the card still lets the filter be removed
+            values = [];   // the field is gone; the card still lets the filter be removed
+            broken = true;
         }
-        return new FilterCardViewModel(filter, values, () => FilterChanged(scope), card => RemoveFilter(card, scope));
+        return new FilterCardViewModel(filter, values, () => FilterChanged(scope), card => RemoveFilter(card, scope)) { IsBroken = broken };
     }
 
     void RebuildVisualFilters()
@@ -296,6 +432,7 @@ public partial class ReportViewModel : ObservableObject
         VisualFilters.Clear();
         if (Selected is { ShowsData: true } v)
             foreach (var f in v.Spec.Filters) VisualFilters.Add(Card(f, FilterScope.Visual));
+        ApplyFilterSearch();
         OnPropertyChanged(nameof(ActiveFilterCount));
     }
 
@@ -303,12 +440,15 @@ public partial class ReportViewModel : ObservableObject
     {
         PageFilters.Clear();
         foreach (var f in _page.Filters) PageFilters.Add(Card(f, FilterScope.Page));
+        ReportFilters.Clear();
+        foreach (var f in _doc.Filters) ReportFilters.Add(Card(f, FilterScope.Report));
+        ApplyFilterSearch();
         OnPropertyChanged(nameof(ActiveFilterCount));
     }
 
     void FilterChanged(FilterScope scope)
     {
-        if (scope == FilterScope.Page) foreach (var v in Visuals) v.Refresh();
+        if (scope != FilterScope.Visual) foreach (var v in Visuals) v.Refresh();
         else Selected?.Refresh();
         OnPropertyChanged(nameof(ActiveFilterCount));
         RaiseChanged();
@@ -318,20 +458,30 @@ public partial class ReportViewModel : ObservableObject
     public void AddFilter(FieldInfo field, FilterScope scope)
     {
         if (field.IsMeasure) return;
-        var list = scope == FilterScope.Page ? _page.Filters : Selected is { ShowsData: true } v ? v.Spec.Filters : null;
+        var list = scope switch
+        {
+            FilterScope.Report => _doc.Filters,
+            FilterScope.Page => _page.Filters,
+            _ => Selected is { ShowsData: true } v ? v.Spec.Filters : null,
+        };
         if (list is null || list.Any(f => f.Field.Refers(field))) return;
         var filter = new FieldFilter { Field = new FieldRef(field, Aggregation.None) };
         list.Add(filter);
         var card = Card(filter, scope);
         card.IsExpanded = true;
-        (scope == FilterScope.Page ? PageFilters : VisualFilters).Add(card);
+        (scope switch { FilterScope.Report => ReportFilters, FilterScope.Page => PageFilters, _ => VisualFilters }).Add(card);
         IsFiltersExpanded = true;
         RaiseChanged();
     }
 
     void RemoveFilter(FilterCardViewModel card, FilterScope scope)
     {
-        if (scope == FilterScope.Page)
+        if (scope == FilterScope.Report)
+        {
+            _doc.Filters.Remove(card.Filter);
+            ReportFilters.Remove(card);
+        }
+        else if (scope == FilterScope.Page)
         {
             _page.Filters.Remove(card.Filter);
             PageFilters.Remove(card);
@@ -371,7 +521,7 @@ public partial class ReportViewModel : ObservableObject
         // Offset the copy so it's visible, keeping it on the page.
         spec.X = Math.Clamp(spec.X + 24, 0, Math.Max(0, PageWidth - spec.Width));
         spec.Y = Math.Clamp(spec.Y + 24, 0, Math.Max(0, PageHeight - spec.Height));
-        var vm = new VisualViewModel(spec, _engine, OnVisualChanged, () => _page.Filters);
+        var vm = CreateVisual(spec);
         Visuals.Add(vm);
         Selected = vm;
         RaiseChanged();
@@ -390,11 +540,19 @@ public partial class ReportViewModel : ObservableObject
     }
 
     [RelayCommand]
-    void InsertShape() => Selected = AddElement(VisualType.Shape, 240, 120, new VisualStyle { Background = "#D6E4F0" });
+    void InsertShape(string? kind)
+    {
+        var square = kind is "Oval" or "Triangle";
+        Selected = AddElement(VisualType.Shape, square ? 160 : 240, square ? 160 : 120,
+            new VisualStyle { Background = "#D6E4F0", Shape = kind is null or "Rectangle" ? null : kind });
+    }
 
     /// <summary>Adds an image from a PNG or JPEG file's bytes.</summary>
     public void InsertImage(byte[] data) =>
         Selected = AddElement(VisualType.Image, 200, 160, new VisualStyle { Image = Convert.ToBase64String(data) });
+
+    [RelayCommand]
+    void InsertBookmarkNavigator() => Selected = AddElement(VisualType.BookmarkNavigator, Math.Min(480, PageWidth), 36, new VisualStyle());
 
     [RelayCommand]
     void InsertPageNavigator() => Selected = AddElement(VisualType.PageNavigator, Math.Min(480, PageWidth), 36, new VisualStyle());
@@ -403,7 +561,7 @@ public partial class ReportViewModel : ObservableObject
     {
         var spec = new VisualSpec { Type = type, Width = w, Height = h, Style = style };
         (spec.X, spec.Y) = NextFreeSpot(w, h);
-        var vm = new VisualViewModel(spec, _engine, OnVisualChanged, () => _page.Filters);
+        var vm = CreateVisual(spec);
         Visuals.Add(vm);
         RaiseChanged();
         return vm;
@@ -422,7 +580,8 @@ public partial class ReportViewModel : ObservableObject
 
     public void Load(ReportDocument doc)
     {
-        Apply(doc, 0);
+        // A report opens on its landing page, as it does in Power BI.
+        Apply(doc, Math.Max(0, doc.Pages.FindIndex(p => p.Name == doc.LandingPage)));
         IsDataView = false;
         ResetHistory();
     }
@@ -431,10 +590,14 @@ public partial class ReportViewModel : ObservableObject
     {
         if (doc.Pages.Count == 0) doc.Pages.Add(new ReportPage());
         _doc = doc;
+        OnFileSettingsChanged();
         Pages.Clear();
         foreach (var page in doc.Pages) Pages.Add(new PageTabViewModel(page));
         OnPropertyChanged(nameof(CanDeletePage));
         OnPropertyChanged(nameof(PageIndicator));
+        RebuildBookmarks();
+        UpdateLandingPage();
+        OnPropertyChanged(nameof(Theme));
         RefreshTables();
         ShowPage(Pages[Math.Clamp(pageIndex, 0, Pages.Count - 1)]);
     }
@@ -447,10 +610,12 @@ public partial class ReportViewModel : ObservableObject
         _page = tab.Page;
         Selected = null;
         Visuals.Clear();
-        foreach (var spec in _page.Visuals) Visuals.Add(new VisualViewModel(spec, _engine, OnVisualChanged, () => _page.Filters));
+        foreach (var spec in _page.Visuals) Visuals.Add(CreateVisual(spec));
         RebuildPageFilters();
+        RebuildDrillThrough();
         OnPropertyChanged(nameof(PageIndicator));
         OnPropertyChanged(nameof(PageBackground));
+        OnPropertyChanged(nameof(PageWallpaper));
         OnPropertyChanged(nameof(PageWidth));
         OnPropertyChanged(nameof(PageHeight));
         OnPropertyChanged(nameof(PageName));
@@ -492,6 +657,25 @@ public partial class ReportViewModel : ObservableObject
         RaiseChanged();
     }
 
+    /// <summary>Insert › New page › Duplicate page: a copy of the current page, its visuals and filters.</summary>
+    [RelayCommand]
+    void DuplicatePage()
+    {
+        _page.Visuals = Visuals.Select(v => v.Spec).ToList();
+        var copy = JsonSerializer.Deserialize<ReportPage>(JsonSerializer.Serialize(_page))!;
+        foreach (var v in copy.Visuals) v.Id = Guid.NewGuid().ToString("N");
+        var names = Pages.Select(p => p.Name).ToHashSet();
+        copy.Name = $"Duplicate of {_page.Name}";
+        for (var n = 2; names.Contains(copy.Name); n++) copy.Name = $"Duplicate of {_page.Name} ({n})";
+        _doc.Pages.Insert(_doc.Pages.IndexOf(_page) + 1, copy);
+        var tab = new PageTabViewModel(copy);
+        Pages.Insert(CurrentPageIndex + 1, tab);
+        OnPropertyChanged(nameof(CanDeletePage));
+        OnPropertyChanged(nameof(PageIndicator));
+        ShowPage(tab);
+        RaiseChanged();
+    }
+
     [RelayCommand]
     void DeletePage(PageTabViewModel tab)
     {
@@ -500,6 +684,8 @@ public partial class ReportViewModel : ObservableObject
         if (tab.IsCurrent) ShowPage(Pages[index == 0 ? 1 : index - 1]);
         Pages.Remove(tab);
         _doc.Pages.Remove(tab.Page);
+        if (_doc.LandingPage == tab.Name) _doc.LandingPage = null;
+        UpdateLandingPage();
         OnPropertyChanged(nameof(CanDeletePage));
         OnPropertyChanged(nameof(PageIndicator));
         RaiseChanged();
@@ -645,7 +831,7 @@ public partial class ReportViewModel : ObservableObject
         var (x, y) = at is { } p ? (p.X - spec.Width / 2, p.Y - 16) : NextFreeSpot(spec.Width, spec.Height);
         spec.X = Math.Clamp(Snap(x), 0, Math.Max(0, PageWidth - spec.Width));
         spec.Y = Math.Clamp(Snap(y), 0, Math.Max(0, PageHeight - spec.Height));
-        var vm = new VisualViewModel(spec, _engine, OnVisualChanged, () => _page.Filters);
+        var vm = CreateVisual(spec);
         Visuals.Add(vm);
         RaiseChanged();
         return vm;
@@ -725,6 +911,9 @@ public partial class ReportViewModel : ObservableObject
     {
         name = string.IsNullOrWhiteSpace(name) ? _page.Name : name.Trim();
         if (name == _page.Name && width == _page.Width && height == _page.Height) return;
+        // The landing page and bookmarks refer to pages by name.
+        if (_doc.LandingPage == _page.Name) _doc.LandingPage = name;
+        foreach (var b in _doc.Bookmarks ?? []) if (b.Page == _page.Name) b.Page = name;
         (_page.Name, _page.Width, _page.Height) = (name, width, height);
         Pages.FirstOrDefault(p => p.IsCurrent)?.Renamed();
         OnPropertyChanged(nameof(PageWidth));

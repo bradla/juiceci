@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Tessera.App.ViewModels;
 using Tessera.Core;
@@ -44,7 +45,13 @@ public partial class ReportView : UserControl
         var area = CanvasScroller.Bounds.Size;
         const double margin = 40;
         double scale;
-        switch (_vm.Zoom)
+        if (_vm.IsMobileLayout && area.Width > margin)
+        {
+            // A phone layout is tall and scrolls, so it's fitted to the width, never past actual size.
+            scale = Math.Min(1, (area.Width - margin - 18) / _vm.PageWidth);
+            _vm.ReportFittedZoom(scale * 100);
+        }
+        else switch (_vm.Zoom)
         {
             case PageZoom.FitPage when area.Width > margin && area.Height > margin:
                 scale = Math.Min((area.Width - margin) / _vm.PageWidth, (area.Height - margin) / _vm.PageHeight);
@@ -60,6 +67,7 @@ public partial class ReportView : UserControl
                 break;
         }
         scale = Math.Max(0.05, scale);
+        PageZoomer.VerticalAlignment = _vm.AlignPageTop ? Avalonia.Layout.VerticalAlignment.Top : Avalonia.Layout.VerticalAlignment.Center;
         PageZoomer.LayoutTransform = new Avalonia.Media.ScaleTransform(scale, scale);
     }
 
@@ -76,17 +84,31 @@ public partial class ReportView : UserControl
         _vm.Visuals.CollectionChanged += OnVisualsChanged;
         _vm.PropertyChanged += OnVmPropertyChanged;
         RebuildCanvas();
-        GridBuilder.Fill(PreviewGrid, _vm.PreviewResult);
+        FillPreview();
         ApplyZoom();
+        ApplyWallpaper();
     }
 
     void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ReportViewModel.Zoom) or nameof(ReportViewModel.ZoomPercent)
-            or nameof(ReportViewModel.PageWidth) or nameof(ReportViewModel.PageHeight))
+            or nameof(ReportViewModel.PageWidth) or nameof(ReportViewModel.PageHeight) or nameof(ReportViewModel.AlignPageTop)
+            or nameof(ReportViewModel.IsMobileLayout))
             ApplyZoom();
-        if (e.PropertyName == nameof(ReportViewModel.PreviewResult))
-            GridBuilder.Fill(PreviewGrid, _vm!.PreviewResult);
+        if (e.PropertyName == nameof(ReportViewModel.PageWallpaper)) ApplyWallpaper();
+        if (e.PropertyName is nameof(ReportViewModel.PreviewResult) or nameof(ReportViewModel.ShowWhitespace)
+            or nameof(ReportViewModel.MonospacedPreview))
+            FillPreview();
+    }
+
+    /// <summary>Design › Wallpaper colours the canvas around the page; none shows the app's canvas colour.</summary>
+    void ApplyWallpaper() =>
+        CanvasScroller.Background = _vm?.PageWallpaper is { } color ? Brush.Parse(color) : null;
+
+    void FillPreview()
+    {
+        PreviewGrid.FontFamily = _vm!.MonospacedPreview ? new FontFamily("DejaVu Sans Mono, Consolas, Menlo, monospace") : FontFamily.Default;
+        GridBuilder.Fill(PreviewGrid, _vm.PreviewResult, _vm.ShowWhitespace);
     }
 
     void OnVisualsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -173,6 +195,8 @@ public partial class ReportView : UserControl
 
         if (target.Well is { Tag: FilterScope scope })
             _vm.AddFilter(field, scope);
+        else if (target.Well is { Tag: PageWell.DrillThrough })
+            _vm.AddDrillThroughField(field);
         else if (target.Well is { Tag: Well well })
             _vm.AddField(field, _vm.Selected, well);
         else
@@ -187,7 +211,7 @@ public partial class ReportView : UserControl
         for (var v = e.Source as Visual; v is not null; v = v.GetVisualParent())
         {
             if (v is Border { Tag: Well } well && _vm?.Selected is not null) return new DropTarget(null, well);
-            if (v is Border { Tag: FilterScope } filters && !field.IsMeasure) return new DropTarget(null, filters);
+            if (v is Border { Tag: FilterScope or PageWell } filters && !field.IsMeasure) return new DropTarget(null, filters);
             if (v is VisualHost host) return new DropTarget(host.Vm, null);
             if (v == PageCanvas) return new DropTarget(null, null);
         }
